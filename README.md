@@ -56,22 +56,36 @@ A desktop command center for managing multiple Claude Code terminal sessions sim
 - No browser chrome, dedicated dock icon
 - System tray support
 
-## Quick Start
+## Install (One Command)
+
+**macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/chriscode138/klawd-nexus/main/install-mac.sh | bash
+```
+This installs everything, creates a **Klawd Nexus.app** in your Applications folder, and you're done. Open it like any other app.
+
+**Windows:**
+1. Download [install-windows.bat](https://raw.githubusercontent.com/chriscode138/klawd-nexus/main/install-windows.bat)
+2. Double-click it
+3. A desktop shortcut is created automatically
+
+**Prerequisites:** [Node.js](https://nodejs.org) v18+ and [Git](https://git-scm.com). That's it.
+
+## Manual Install
 
 ```bash
-# Clone and install
-git clone https://github.com/yourusername/klawd-nexus.git
+git clone https://github.com/chriscode138/klawd-nexus.git
 cd klawd-nexus
 npm install
-
-# Run in browser
-npm start
-# Then open http://localhost:3000
 
 # Run as desktop app
 npm run app
 
-# Run on a specific port
+# Or run in browser
+npm start
+# Then open http://localhost:3000
+
+# Custom port
 PORT=4000 npm start
 ```
 
