@@ -1,0 +1,16 @@
+{
+  "name": "Claude Nexus",
+  "short_name": "Nexus",
+  "description": "Remote agent command center",
+  "start_url": "/mobile.html",
+  "display": "standalone",
+  "background_color": "#06060c",
+  "theme_color": "#06060c",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+  <title>Claude Nexus</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Courier+Prime:wght@400;700&family=Source+Code+Pro:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark-dimmed.min.css">
+  <link rel="stylesheet" href="/css/theme.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90' fill='%23818cf8'>&#x25C6;</text></svg>">
+</head>
+<body>
+  <div id="app">
+    <!-- Title Bar -->
+    <header id="titlebar">
+      <div class="titlebar-left">
+        <span class="logo">&loz;</span>
+        <span class="app-name">Claude Nexus</span>
+        <span class="app-badge">Command Center</span>
+      </div>
+      <div class="titlebar-center">
+        <div class="connection-indicator">
+          <div id="connection-status" class="connection-dot connected" title="Connected"></div>
+          <span id="connection-latency" class="connection-latency hidden"></span>
+        </div>
+      </div>
+      <div class="titlebar-right">
+        <button id="btn-mute-toggle" class="btn btn-icon-only" title="Toggle notification sounds (&#8984;M)">
+          <svg id="mute-icon-on" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M8 2L4 6H1v4h3l4 4V2z"/>
+            <path d="M12.4 4.6a5 5 0 0 1 0 6.8"/>
+            <path d="M10.8 6.2a2.5 2.5 0 0 1 0 3.6"/>
+          </svg>
+          <svg id="mute-icon-off" class="hidden" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M8 2L4 6H1v4h3l4 4V2z"/>
+            <line x1="12" y1="5" x2="15" y2="10"/>
+            <line x1="15" y1="5" x2="12" y2="10"/>
+          </svg>
+        </button>
+        <div class="workspace-controls">
+          <button id="btn-save-workspace" class="btn btn-ghost btn-small" title="Save current workspace">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M11 13H3a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h6l3 3v8a1 1 0 0 1-1 1z"/>
+              <path d="M9 13V8H5v5"/><path d="M5 1v3h3"/>
+            </svg>
+            Save
+          </button>
+          <button id="btn-load-workspace" class="btn btn-ghost btn-small" title="Load a workspace preset">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M2 4v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H7L5.5 3H3a1 1 0 0 0-1 1z"/>
+            </svg>
+            Load
+          </button>
+        </div>
+        <button id="btn-remote-access" class="btn btn-icon-only" title="Remote Access (phone)">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="4" y="1" width="8" height="14" rx="1.5"/>
+            <line x1="6" y1="12" x2="10" y2="12"/>
+          </svg>
+        </button>
+        <button id="btn-mcp-manager" class="btn btn-icon-only" title="MCP Server Manager">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="8" cy="8" r="6"/>
+            <path d="M8 5v6M5 8h6"/>
+            <circle cx="8" cy="8" r="2"/>
+          </svg>
+        </button>
+        <kbd class="shortcut-hint" title="Press ? for all shortcuts">&#8984;N</kbd>
+        <button id="btn-new-agent" class="btn btn-primary">
+          <span class="btn-icon">+</span>
+          New Agent
+        </button>
+      </div>
+    </header>
+
+    <!-- Cycle 4: Status Summary Bar -->
+    <div id="status-bar" class="status-bar hidden">
+      <div class="status-chips"></div>
+      <div class="status-bar-right">
+        <span id="session-timer" class="session-timer hidden" title="Total session time"></span>
+        <span id="heartbeat" class="heartbeat-dot hidden" title="Agent activity"></span>
+        <button id="status-auto-reply" class="btn btn-ghost btn-small status-auto-reply-btn" title="Auto-reply 'y' to all permission prompts">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 6l3.5 3.5L11 2"/></svg>
+          Auto-Reply
+        </button>
+        <kbd class="shortcut-hint" title="Open command palette" style="cursor:pointer;" id="palette-hint-trigger">&#8984;K</kbd>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <main id="workspace">
+      <!-- Left Sidebar -->
+      <aside id="sidebar">
+        <div class="sidebar-tabs">
+          <button class="sidebar-tab active" data-tab="agents-tab">Agents</button>
+          <button class="sidebar-tab" data-tab="activity-tab">
+            Activity
+            <span id="activity-count" class="activity-count-badge hidden">0</span>
+          </button>
+        </div>
+
+        <div id="agents-tab" class="sidebar-tab-content active">
+          <div class="sidebar-section sidebar-agents">
+            <div class="section-header">
+              <span>Agents</span>
+              <span id="agent-count" class="count-label">0</span>
+            </div>
+            <div id="agent-list" class="sidebar-list"></div>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <div class="sidebar-section sidebar-questions">
+            <div class="section-header">
+              <span>Pending Questions</span>
+              <span id="question-count" class="badge hidden">0</span>
+            </div>
+            <div id="question-list" class="sidebar-list"></div>
+            <div id="no-questions" class="empty-section">
+              <span class="empty-section-icon">&#10003;</span>
+              <span>No pending questions</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="activity-tab" class="sidebar-tab-content">
+          <div class="sidebar-section" style="flex:1;">
+            <div class="section-header">
+              <span>Activity Log</span>
+              <button id="btn-clear-activity" class="btn btn-ghost btn-small" style="padding:2px 6px;font-size:10px;">Clear</button>
+            </div>
+            <div id="activity-log" class="sidebar-list activity-log"></div>
+            <div id="no-activity" class="empty-section">
+              <span class="empty-section-icon">&#9678;</span>
+              <span>No activity yet</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Terminal Area -->
+      <section id="terminal-area">
+        <div id="terminal-header" class="hidden">
+          <div class="terminal-info">
+            <div class="terminal-status-dot" id="terminal-status-dot"></div>
+            <span id="terminal-agent-name" class="terminal-name"></span>
+            <span class="terminal-separator">/</span>
+            <span id="terminal-agent-cwd" class="terminal-cwd"></span>
+            <span id="terminal-session-timer" class="terminal-timer hidden"></span>
+          </div>
+          <div class="terminal-actions">
+            <button id="btn-scroll-bottom" class="btn btn-icon-only hidden" title="Scroll to bottom">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M8 3v8M5 9l3 3 3-3"/>
+                <line x1="4" y1="14" x2="12" y2="14"/>
+              </svg>
+            </button>
+            <button id="btn-copy-selection" class="btn btn-icon-only" title="Copy selection" style="display:none;">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="5" y="5" width="9" height="9" rx="1"/>
+                <path d="M2 11V3a1 1 0 0 1 1-1h8"/>
+              </svg>
+            </button>
+            <button id="btn-clear-terminal" class="btn btn-icon-only" title="Clear terminal">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 3h10M5 3V2h6v1M6 6v6M10 6v6M4 3v10a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3"/>
+              </svg>
+            </button>
+            <button id="btn-copy-last-output" class="btn btn-icon-only" title="Copy last output">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="5" y="5" width="9" height="9" rx="1"/>
+                <path d="M2 11V3a1 1 0 0 1 1-1h8"/>
+              </svg>
+            </button>
+            <div class="terminal-actions-sep"></div>
+            <button id="btn-toggle-preview" class="btn btn-icon-only" title="Toggle file browser (&#8984;B)">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="1" y="2" width="14" height="12" rx="1"/>
+                <line x1="10" y1="2" x2="10" y2="14"/>
+              </svg>
+            </button>
+            <button id="btn-export-session" class="btn btn-icon-only" title="Export session to Markdown">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M4 14h8a1 1 0 0 0 1-1V5l-3-3H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1z"/>
+                <path d="M9 2v3h3"/>
+                <path d="M8 8v4M6 10l2 2 2-2"/>
+              </svg>
+            </button>
+            <button id="btn-restart-agent" class="btn btn-icon-only" title="Restart agent">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M2 8a6 6 0 1 1 1.5 4"/>
+                <path d="M2 12V8h4"/>
+              </svg>
+            </button>
+            <button id="btn-close-agent" class="btn btn-icon-only btn-danger-hover" title="Close agent">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <line x1="4" y1="4" x2="12" y2="12"/>
+                <line x1="12" y1="4" x2="4" y2="12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- File Split Preview (above terminal) -->
+        <div id="file-split" class="hidden">
+          <div class="file-split-header">
+            <div class="file-split-info">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h8a1 1 0 0 0 1-1V4l-3-3H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1z"/><path d="M8 1v3h3"/></svg>
+              <span id="file-split-name" class="file-split-title">file.js</span>
+            </div>
+            <button id="btn-close-file-split" class="btn btn-icon-only" title="Close preview (Esc)">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+                <line x1="3" y1="3" x2="11" y2="11"/>
+                <line x1="11" y1="3" x2="3" y2="11"/>
+              </svg>
+            </button>
+          </div>
+          <div id="file-split-content">
+            <pre><code id="file-split-code"></code></pre>
+          </div>
+        </div>
+        <div id="file-split-resizer" class="hidden"></div>
+
+        <div id="terminal-container">
+          <!-- Floating input bar -->
+          <div id="floating-input" class="floating-input hidden">
+            <div class="floating-input-inner">
+              <div class="floating-input-label">
+                <span class="floating-input-dot"></span>
+                <span id="floating-input-agent-name">Agent</span>
+              </div>
+              <div class="floating-input-row">
+                <textarea id="floating-input-field" placeholder="Type a message to the agent..." autocomplete="off" spellcheck="false" rows="1"></textarea>
+                <button class="btn btn-primary btn-small" id="floating-input-send">Send</button>
+              </div>
+              <div class="floating-input-hint">Press <kbd>Enter</kbd> to send, <kbd>Shift+Enter</kbd> newline, <kbd>&uarr;&darr;</kbd> history, <kbd>Esc</kbd> to focus terminal</div>
+            </div>
+          </div>
+          <div id="empty-state">
+            <div class="empty-hero">
+              <div class="empty-logo">&loz;</div>
+              <h1>Claude Nexus</h1>
+              <p class="empty-subtitle">Your command center for orchestrating multiple Claude Code agents</p>
+            </div>
+            <div class="empty-features">
+              <div class="feature-card">
+                <div class="feature-icon">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="3" width="16" height="14" rx="2"/>
+                    <line x1="2" y1="7" x2="18" y2="7"/>
+                    <circle cx="5" cy="5" r="0.5" fill="currentColor"/>
+                    <circle cx="7.5" cy="5" r="0.5" fill="currentColor"/>
+                    <circle cx="10" cy="5" r="0.5" fill="currentColor"/>
+                  </svg>
+                </div>
+                <div class="feature-text">
+                  <strong>Multi-Terminal</strong>
+                  <span>Run Claude Code in different projects simultaneously</span>
+                </div>
+              </div>
+              <div class="feature-card">
+                <div class="feature-icon">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="10" cy="6" r="3"/>
+                    <path d="M4 18v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
+                  </svg>
+                </div>
+                <div class="feature-text">
+                  <strong>General Manager View</strong>
+                  <span>Answer agent questions from one centralized queue</span>
+                </div>
+              </div>
+              <div class="feature-card">
+                <div class="feature-icon">
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M3 3h5v5H3z"/>
+                    <path d="M12 3h5v5h-5z"/>
+                    <path d="M3 12h5v5H3z"/>
+                    <path d="M12 12h5v5h-5z"/>
+                  </svg>
+                </div>
+                <div class="feature-text">
+                  <strong>File Preview</strong>
+                  <span>Browse and preview project files alongside terminals</span>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-large" id="btn-empty-create">
+              <span class="btn-icon">+</span>
+              Create Your First Agent
+            </button>
+            <div class="empty-shortcuts">
+              <span><kbd>&#8984;N</kbd> New Agent</span>
+              <span><kbd>&#8984;K</kbd> Command Palette</span>
+              <span><kbd>&#8984;B</kbd> Toggle Files</span>
+              <span><kbd>&#8984;1-9</kbd> Switch Agent</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- File Preview Panel -->
+      <aside id="preview-panel" class="hidden">
+        <div class="preview-header">
+          <div class="preview-nav">
+            <button id="btn-preview-back" class="btn btn-icon-only" title="Go back">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 2L4 7l5 5"/>
+              </svg>
+            </button>
+            <span id="preview-filename" class="preview-title">Files</span>
+          </div>
+          <button id="btn-close-preview" class="btn btn-icon-only" title="Close panel">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <line x1="3" y1="3" x2="11" y2="11"/>
+              <line x1="11" y1="3" x2="3" y2="11"/>
+            </svg>
+          </button>
+        </div>
+        <div id="preview-content">
+          <div id="file-browser"></div>
+          <div id="file-viewer" class="hidden">
+            <pre><code id="file-code"></code></pre>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- New Agent Modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-labelledby="modal-title">
+      <div class="modal-header">
+        <h3 id="modal-title">New Agent</h3>
+        <button class="btn btn-icon-only modal-close" id="btn-modal-close" title="Close">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="3" y1="3" x2="11" y2="11"/>
+            <line x1="11" y1="3" x2="3" y2="11"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="agent-name">Agent Name</label>
+          <input type="text" id="agent-name" placeholder="e.g., Book Project, Proteus Advisory" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="form-group">
+          <label for="agent-cwd">Working Directory</label>
+          <div class="input-with-button">
+            <input type="text" id="agent-cwd" placeholder="/Users/chris/Desktop/my-project" autocomplete="off" spellcheck="false">
+            <button class="btn btn-ghost" id="btn-browse-folder" title="Browse folders">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/>
+              </svg>
+            </button>
+          </div>
+          <div id="folder-browser" class="folder-browser hidden"></div>
+        </div>
+        <div class="form-group">
+          <label for="agent-command">Command <span class="label-hint">(optional)</span></label>
+          <input type="text" id="agent-command" placeholder="claude" value="claude" autocomplete="off" spellcheck="false">
+          <div class="form-hint">The command to run in the terminal. Defaults to <code>claude</code>.</div>
+        </div>
+        <div class="form-group">
+          <button type="button" class="btn btn-ghost btn-small startup-toggle" id="startup-prompt-toggle">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" class="startup-chevron"><path d="M4 3l3 3-3 3"/></svg>
+            Startup Prompt <span class="label-hint">(optional)</span>
+          </button>
+          <div id="startup-prompt-section" class="startup-prompt-section collapsed">
+            <textarea id="agent-startup-prompt" placeholder="e.g., Review the codebase and summarize what you find" rows="2" spellcheck="false"></textarea>
+            <div id="startup-presets" class="startup-presets"></div>
+            <div class="form-hint">This message will be sent to the agent 3 seconds after it starts.</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btn-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="btn-create-agent">
+          Create Agent
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Dialog -->
+  <div id="confirm-overlay" class="modal-overlay hidden">
+    <div class="confirm-dialog">
+      <p id="confirm-message"></p>
+      <div class="confirm-actions">
+        <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+        <button class="btn btn-primary" id="confirm-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Workspace dropdown -->
+  <div id="workspace-dropdown" class="workspace-dropdown hidden"></div>
+
+  <!-- Workspace name prompt -->
+  <div id="workspace-name-overlay" class="modal-overlay hidden">
+    <div class="confirm-dialog">
+      <p>Save workspace as:</p>
+      <input type="text" id="workspace-name-input" placeholder="e.g., Daily Setup" autocomplete="off" spellcheck="false" style="margin-bottom: 16px;">
+      <div class="confirm-actions">
+        <button class="btn btn-ghost" id="workspace-name-cancel">Cancel</button>
+        <button class="btn btn-primary" id="workspace-name-ok">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MCP Server Manager Modal -->
+  <div id="mcp-overlay" class="modal-overlay hidden">
+    <div class="mcp-modal" role="dialog" aria-labelledby="mcp-modal-title">
+      <div class="modal-header">
+        <h3 id="mcp-modal-title">MCP Server Manager</h3>
+        <button class="btn btn-icon-only modal-close" id="btn-mcp-close" title="Close">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="3" y1="3" x2="11" y2="11"/>
+            <line x1="11" y1="3" x2="3" y2="11"/>
+          </svg>
+        </button>
+      </div>
+      <div class="mcp-modal-body">
+        <div id="mcp-server-list" class="mcp-server-list">
+          <div class="mcp-loading">Loading servers...</div>
+        </div>
+        <div class="mcp-add-section">
+          <button id="btn-mcp-show-add" class="btn btn-ghost btn-small mcp-add-toggle">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2v8M2 6h8"/></svg>
+            Add Server
+          </button>
+          <div id="mcp-add-form" class="mcp-add-form hidden">
+            <div class="form-group">
+              <label for="mcp-server-name">Server Name</label>
+              <input type="text" id="mcp-server-name" placeholder="e.g., my-mcp-server" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="form-group">
+              <label>Transport Type</label>
+              <div class="mcp-type-toggle">
+                <button class="mcp-type-btn active" data-type="stdio">Command (stdio)</button>
+                <button class="mcp-type-btn" data-type="http">HTTP URL</button>
+              </div>
+            </div>
+            <div id="mcp-stdio-fields" class="mcp-transport-fields">
+              <div class="form-group">
+                <label for="mcp-command">Command</label>
+                <input type="text" id="mcp-command" placeholder="e.g., npx" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="form-group">
+                <label for="mcp-args">Arguments <span class="label-hint">(comma-separated)</span></label>
+                <input type="text" id="mcp-args" placeholder="e.g., -y, some-package" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="form-group">
+                <label for="mcp-env">Environment Variables <span class="label-hint">(one per line, KEY=VALUE)</span></label>
+                <textarea id="mcp-env" rows="3" placeholder="API_KEY=your-key-here&#10;OTHER_VAR=value" spellcheck="false"></textarea>
+              </div>
+            </div>
+            <div id="mcp-http-fields" class="mcp-transport-fields hidden">
+              <div class="form-group">
+                <label for="mcp-url">URL</label>
+                <input type="text" id="mcp-url" placeholder="https://example.com/mcp" autocomplete="off" spellcheck="false">
+              </div>
+            </div>
+            <div class="mcp-add-actions">
+              <button class="btn btn-ghost btn-small" id="btn-mcp-cancel-add">Cancel</button>
+              <button class="btn btn-primary btn-small" id="btn-mcp-add">Add Server</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mcp-modal-footer">
+        <span class="mcp-info-note">Changes take effect next time you start a Claude Code agent</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remote Access Modal -->
+  <div id="remote-overlay" class="modal-overlay hidden">
+    <div class="modal" style="width:380px;">
+      <div class="modal-header">
+        <h3>Remote Access</h3>
+        <button class="btn btn-icon-only" id="btn-remote-close" title="Close">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" style="text-align:center;">
+        <div id="remote-status">
+          <p style="color:var(--color-text-secondary);margin-bottom:16px;">Access Claude Nexus from your phone, anywhere.</p>
+          <button class="btn btn-primary btn-large" id="btn-tunnel-start">
+            Enable Remote Access
+          </button>
+        </div>
+        <div id="remote-active" style="display:none;">
+          <div id="remote-qr" style="margin:0 auto 16px;width:200px;height:200px;background:white;border-radius:12px;display:flex;align-items:center;justify-content:center;"></div>
+          <p style="font-size:13px;color:var(--color-text-secondary);margin-bottom:8px;">Scan with your phone camera, or open:</p>
+          <div id="remote-url" style="font-family:var(--font-mono);font-size:12px;padding:10px;background:var(--color-bg);border-radius:8px;word-break:break-all;cursor:pointer;border:1px solid var(--color-border);" title="Click to copy"></div>
+          <p style="font-size:11px;color:var(--color-text-tertiary);margin-top:12px;">Add <code>/mobile.html</code> for the mobile-optimized view</p>
+          <button class="btn btn-ghost btn-small" id="btn-tunnel-stop" style="margin-top:16px;color:var(--color-danger);">
+            Disable Remote Access
+          </button>
+        </div>
+        <div id="remote-loading" style="display:none;">
+          <div style="color:var(--color-text-secondary);padding:20px;">Creating secure tunnel...</div>
+        </div>
+        <div style="border-top:1px solid var(--color-border);margin-top:20px;padding-top:16px;">
+          <p style="font-size:12px;font-weight:600;color:var(--color-text-secondary);margin-bottom:10px;">Security PIN</p>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="tel" id="remote-pin-input" placeholder="Set 4-6 digit PIN" maxlength="6"
+              style="flex:1;padding:8px 12px;font-size:14px;text-align:center;letter-spacing:6px;background:var(--color-bg);border:1px solid var(--color-border);border-radius:8px;color:var(--color-text);outline:none;">
+            <button class="btn btn-primary btn-small" id="btn-set-pin">Set</button>
+            <button class="btn btn-ghost btn-small" id="btn-clear-pin" style="color:var(--color-danger);">Clear</button>
+          </div>
+          <p id="pin-status" style="font-size:11px;color:var(--color-text-tertiary);margin-top:6px;"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
+
+  <!-- Agent Context Menu -->
+  <div id="context-menu" class="context-menu hidden">
+    <div class="context-menu-item" data-action="rename">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.5 1.5l2 2L4 12H2v-2L10.5 1.5z"/></svg>
+      <span>Rename</span>
+    </div>
+    <div class="context-menu-item" data-action="pin">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 1l4 4-2.5 2.5L9 10l-3 3-2.5-2.5L1 13"/><circle cx="9.5" cy="4.5" r="1"/></svg>
+      <span>Pin to Top</span>
+    </div>
+    <div class="context-menu-item" data-action="addnote">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="12" height="12" rx="1.5"/><path d="M4 5h6M4 7.5h4"/></svg>
+      <span>Add Note</span>
+    </div>
+    <div class="context-menu-item" data-action="duplicate">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M1 10V2a1 1 0 0 1 1-1h8"/></svg>
+      <span>Duplicate</span>
+    </div>
+    <div class="context-menu-item" data-action="autoreply">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 7l4 4L13 3"/></svg>
+      <span>Enable Auto-Reply</span>
+    </div>
+    <div class="context-menu-item context-menu-submenu" data-action="color">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/></svg>
+      <span>Color Label</span>
+      <svg class="submenu-arrow" width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 1l3 3-3 3"/></svg>
+    </div>
+    <div class="context-menu-colors hidden" id="context-menu-colors">
+      <div class="color-dot" data-color="default" title="Default"></div>
+      <div class="color-dot" data-color="red" title="Red" style="background:#ef4444;"></div>
+      <div class="color-dot" data-color="orange" title="Orange" style="background:#f59e0b;"></div>
+      <div class="color-dot" data-color="green" title="Green" style="background:#34d399;"></div>
+      <div class="color-dot" data-color="blue" title="Blue" style="background:#60a5fa;"></div>
+      <div class="color-dot" data-color="purple" title="Purple" style="background:#c084fc;"></div>
+    </div>
+    <div class="context-menu-item" data-action="export">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h8a1 1 0 0 0 1-1V4l-3-3H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1z"/><path d="M7 6v4M5 8l2 2 2-2"/></svg>
+      <span>Export Session</span>
+    </div>
+    <div class="context-menu-divider"></div>
+    <div class="context-menu-item context-menu-danger" data-action="close">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="3" x2="11" y2="11"/><line x1="11" y1="3" x2="3" y2="11"/></svg>
+      <span>Close Agent</span>
+    </div>
+  </div>
+
+  <!-- Cycle 4: Command Palette -->
+  <div id="command-palette-overlay" class="modal-overlay hidden">
+    <div class="palette-container">
+      <div class="palette-search">
+        <svg class="palette-search-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="6.5" cy="6.5" r="4.5"/>
+          <path d="M10 10l4 4"/>
+        </svg>
+        <input type="text" class="palette-input" placeholder="Search agents, actions, workspaces..." autocomplete="off" spellcheck="false">
+        <kbd class="palette-esc">Esc</kbd>
+      </div>
+      <div id="palette-results" class="palette-results"></div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcut Overlay -->
+  <div id="shortcut-overlay" class="modal-overlay hidden">
+    <div class="shortcut-modal">
+      <div class="shortcut-modal-header">
+        <h3>Keyboard Shortcuts</h3>
+        <button class="btn btn-icon-only" id="btn-close-shortcuts" title="Close">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="3" y1="3" x2="11" y2="11"/>
+            <line x1="11" y1="3" x2="3" y2="11"/>
+          </svg>
+        </button>
+      </div>
+      <div class="shortcut-grid">
+        <div class="shortcut-group">
+          <div class="shortcut-group-title">Agents</div>
+          <div class="shortcut-row"><kbd>&#8984;N</kbd><span>New Agent</span></div>
+          <div class="shortcut-row"><kbd>&#8984;1</kbd> - <kbd>&#8984;9</kbd><span>Switch to Agent</span></div>
+          <div class="shortcut-row"><kbd>&#8984;&#8679;]</kbd><span>Next Agent</span></div>
+          <div class="shortcut-row"><kbd>&#8984;&#8679;[</kbd><span>Previous Agent</span></div>
+          <div class="shortcut-row"><kbd>&#8984;W</kbd><span>Close Agent</span></div>
+        </div>
+        <div class="shortcut-group">
+          <div class="shortcut-group-title">Questions</div>
+          <div class="shortcut-row"><kbd>&#8984;J</kbd><span>Focus Question Input</span></div>
+          <div class="shortcut-row"><kbd>&#8984;&#8679;Y</kbd><span>Accept All (send "y")</span></div>
+        </div>
+        <div class="shortcut-group">
+          <div class="shortcut-group-title">Panels</div>
+          <div class="shortcut-row"><kbd>&#8984;B</kbd><span>Toggle File Browser</span></div>
+          <div class="shortcut-row"><kbd>&#8984;H</kbd><span>Toggle Hidden Files</span></div>
+          <div class="shortcut-row"><kbd>&#8984;F</kbd><span>Search Terminal</span></div>
+        </div>
+        <div class="shortcut-group">
+          <div class="shortcut-group-title">General</div>
+          <div class="shortcut-row"><kbd>&#8984;K</kbd><span>Command Palette</span></div>
+          <div class="shortcut-row"><kbd>&#8984;M</kbd><span>Toggle Mute</span></div>
+          <div class="shortcut-row"><kbd>&#8984;&#8679;F</kbd><span>Focus / Zen Mode</span></div>
+          <div class="shortcut-row"><kbd>Esc</kbd><span>Close dialog / search</span></div>
+          <div class="shortcut-row"><kbd>?</kbd><span>Show this overlay</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="/js/bundle.js"></script>
+</body>
+</html>

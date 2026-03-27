@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Claude Nexus">
+  <meta name="theme-color" content="#06060c">
+  <title>Claude Nexus</title>
+  <link rel="apple-touch-icon" href="/icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #06060c;
+      --surface: #0b0b15;
+      --surface2: #12121e;
+      --border: rgba(255,255,255,0.08);
+      --text: #eeeef3;
+      --text2: #8b8ba3;
+      --text3: #4e4e6a;
+      --accent: #7c6cf0;
+      --accent-dim: rgba(124,108,240,0.12);
+      --success: #34d399;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --font: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+      --mono: 'SF Mono', 'Menlo', monospace;
+      --safe-b: env(safe-area-inset-bottom, 0px);
+    }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 15px;
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      height: 100dvh;
+    }
+
+    /* ─── Header ─── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .header-logo {
+      color: var(--accent);
+      font-size: 20px;
+      filter: drop-shadow(0 0 8px rgba(124,108,240,0.3));
+    }
+    .header-name {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+    .header-status {
+      font-size: 12px;
+      color: var(--text3);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .header-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+    .header-dot.connected { background: var(--success); }
+
+    /* ─── Tabs ─── */
+    .tabs {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text3);
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      position: relative;
+    }
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .tab-badge {
+      position: absolute;
+      top: 6px;
+      right: calc(50% - 30px);
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      background: var(--warning);
+      color: #000;
+      font-size: 10px;
+      font-weight: 800;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ─── Content ─── */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .panel { display: none; height: 100%; overflow-y: auto; }
+    .panel.active { display: block; }
+
+    /* ─── Agent Cards ─── */
+    .agent-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .agent-card:active { background: var(--surface2); }
+    .agent-card.selected { background: var(--accent-dim); }
+    .agent-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-top: 4px;
+      flex-shrink: 0;
+    }
+    .agent-dot.active { background: var(--success); box-shadow: 0 0 6px rgba(52,211,153,0.3); }
+    .agent-dot.waiting { background: var(--warning); animation: pulse 2s infinite; }
+    .agent-dot.exited { background: var(--text3); opacity: 0.5; }
+    .agent-info { flex: 1; min-width: 0; }
+    .agent-card-name {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+    .agent-card-path {
+      font-size: 12px;
+      color: var(--text3);
+      font-family: var(--mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    .agent-card-preview {
+      font-size: 12px;
+      color: var(--text2);
+      font-family: var(--mono);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 4px;
+      padding: 4px 8px;
+      background: var(--surface2);
+      border-radius: 6px;
+    }
+    .agent-card-meta {
+      font-size: 11px;
+      color: var(--text3);
+      margin-top: 4px;
+    }
+
+    /* ─── Question Cards ─── */
+    .question-card {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      border-left: 3px solid var(--warning);
+    }
+    .question-from {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--warning);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: 6px;
+    }
+    .question-body {
+      font-size: 13px;
+      color: var(--text2);
+      font-family: var(--mono);
+      padding: 8px;
+      background: var(--surface2);
+      border-radius: 6px;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .question-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .question-actions input {
+      flex: 1;
+      padding: 10px 12px;
+      font-size: 15px;
+      font-family: var(--mono);
+      background: var(--bg);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      color: var(--text);
+      outline: none;
+    }
+    .question-actions input:focus {
+      border-color: var(--accent);
+    }
+    .question-actions button {
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .no-questions {
+      padding: 40px 16px;
+      text-align: center;
+      color: var(--text3);
+      font-size: 14px;
+    }
+
+    /* ─── Output View ─── */
+    .output-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .output-back {
+      font-size: 14px;
+      color: var(--accent);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-weight: 600;
+    }
+    .output-agent-name {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .output-content {
+      padding: 12px 16px;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text2);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ─── Input Bar ─── */
+    .input-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 16px;
+      padding-bottom: max(10px, var(--safe-b));
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .input-bar select {
+      padding: 10px 8px;
+      font-size: 13px;
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      max-width: 100px;
+    }
+    .input-bar input {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 15px;
+      background: var(--bg);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      color: var(--text);
+      outline: none;
+    }
+    .input-bar input:focus { border-color: var(--accent); }
+    .input-bar button {
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .input-bar button:active { opacity: 0.8; }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text3);
+      gap: 12px;
+      padding: 40px;
+      text-align: center;
+    }
+    .empty-state .logo { font-size: 40px; color: var(--accent); }
+
+    /* ─── Chat Panel ─── */
+    .chat-input-bar {
+      display: flex;
+      gap: 8px;
+      padding: 10px 16px;
+      padding-bottom: max(10px, var(--safe-b));
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      position: sticky;
+      bottom: 0;
+    }
+    .chat-input-bar input {
+      flex: 1;
+      padding: 12px 14px;
+      font-size: 15px;
+      background: var(--bg);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      color: var(--text);
+      outline: none;
+    }
+    .chat-input-bar input:focus { border-color: var(--accent); }
+    .chat-input-bar button {
+      padding: 12px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    #chat-panel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    #chat-panel .output-content {
+      flex: 1;
+      overflow-y: auto;
+    }
+    #chat-panel .output-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="header">
+      <div class="header-title">
+        <span class="header-logo">&loz;</span>
+        <span class="header-name">Claude Nexus</span>
+      </div>
+      <div class="header-status">
+        <div class="header-dot" id="conn-dot"></div>
+        <span id="conn-label">Connecting</span>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-panel="agents-panel">Agents</button>
+      <button class="tab" data-panel="questions-panel">
+        Questions
+        <span class="tab-badge" id="q-badge" style="display:none">0</span>
+      </button>
+    </div>
+
+    <div class="content">
+      <div class="panel active" id="agents-panel">
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);">
+          <button id="btn-new-mobile" style="width:100%;padding:12px;font-size:14px;font-weight:600;background:var(--accent);color:white;border:none;border-radius:10px;cursor:pointer;">+ New Agent</button>
+        </div>
+        <div id="new-agent-form" style="display:none;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface);">
+          <input type="text" id="m-agent-name" placeholder="Agent name" style="width:100%;padding:10px 12px;font-size:15px;background:var(--bg);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:var(--text);outline:none;margin-bottom:8px;">
+          <input type="text" id="m-agent-cwd" placeholder="Working directory (e.g. /Users/chris/Desktop)" style="width:100%;padding:10px 12px;font-size:13px;font-family:var(--mono);background:var(--bg);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:var(--text);outline:none;margin-bottom:8px;">
+          <div style="display:flex;gap:8px;">
+            <button id="btn-create-mobile" style="flex:1;padding:10px;font-size:14px;font-weight:600;background:var(--accent);color:white;border:none;border-radius:8px;">Create</button>
+            <button id="btn-cancel-mobile" style="padding:10px 16px;font-size:14px;background:var(--surface2);color:var(--text2);border:none;border-radius:8px;">Cancel</button>
+          </div>
+        </div>
+        <div id="agent-list"></div>
+        <div class="empty-state" id="empty-agents">
+          <div class="logo">&loz;</div>
+          <div>No agents running</div>
+          <div style="font-size:12px;">Tap + New Agent above to create one</div>
+        </div>
+      </div>
+      <div class="panel" id="questions-panel">
+        <div id="question-list"></div>
+        <div class="no-questions" id="empty-questions">No pending questions</div>
+      </div>
+      <div class="panel" id="chat-panel">
+        <div class="output-header">
+          <button class="output-back" id="btn-back">&larr; Back</button>
+          <span class="output-agent-name" id="chat-agent-name"></span>
+          <span class="agent-dot" id="chat-agent-dot" style="width:8px;height:8px;"></span>
+        </div>
+        <div class="output-content" id="chat-output"></div>
+        <div class="chat-input-bar">
+          <input type="text" id="chat-input" placeholder="Message this agent..." autocomplete="off">
+          <button id="btn-chat-send">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-bar" id="global-input-bar">
+      <select id="target-agent"></select>
+      <input type="text" id="mobile-input" placeholder="Send to agent..." autocomplete="off">
+      <button id="btn-send">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const agents = new Map();
+    const agentLastLines = new Map();
+    const agentOutputBuffers = new Map(); // Store last ~200 lines per agent
+    const MAX_OUTPUT_LINES = 200;
+    let ws = null;
+    let selectedAgentId = null;
+    let viewingAgentId = null; // Currently viewing in chat panel
+    let reconnectTimer = null;
+
+    // ─── WebSocket ───
+    function connect() {
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(protocol + '//' + location.host);
+
+      ws.onopen = function() {
+        document.getElementById('conn-dot').classList.add('connected');
+        document.getElementById('conn-label').textContent = 'Connected';
+      };
+
+      ws.onmessage = function(e) {
+        try { handleMessage(JSON.parse(e.data)); } catch(err) {}
+      };
+
+      ws.onclose = function() {
+        document.getElementById('conn-dot').classList.remove('connected');
+        document.getElementById('conn-label').textContent = 'Disconnected';
+        reconnectTimer = setTimeout(connect, 2000);
+      };
+    }
+
+    function send(msg) {
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+    }
+
+    function handleMessage(msg) {
+      switch(msg.type) {
+        case 'created':
+          agents.set(msg.id, {
+            id: msg.id, name: msg.name, cwd: msg.cwd,
+            status: msg.status || 'active',
+            question: msg.question || null,
+            startedAt: msg.startedAt
+          });
+          renderAgents();
+          renderQuestions();
+          updateTargetSelect();
+          break;
+        case 'output':
+          // Buffer output per agent (stripped of ANSI, last N lines)
+          var buf = agentOutputBuffers.get(msg.id) || [];
+          var cleaned = msg.data
+            .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
+            .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
+            .replace(/\x1B\[\?[0-9;]*[hl]/g, '')
+            .replace(/\x1B[^\[].?/g, '')
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+            .replace(/\r/g, '');
+          var newLines = cleaned.split('\n');
+          for (var li = 0; li < newLines.length; li++) {
+            if (newLines[li].trim()) buf.push(newLines[li]);
+          }
+          if (buf.length > MAX_OUTPUT_LINES) buf.splice(0, buf.length - MAX_OUTPUT_LINES);
+          agentOutputBuffers.set(msg.id, buf);
+          // Update chat view if this agent is currently being viewed
+          if (viewingAgentId === msg.id) {
+            appendChatOutput(cleaned);
+          }
+          break;
+        case 'lastLine':
+          agentLastLines.set(msg.id, msg.line);
+          updateAgentPreview(msg.id);
+          break;
+        case 'question':
+          var a = agents.get(msg.id);
+          if (a) { a.status = 'waiting'; a.question = msg.text; }
+          renderAgents();
+          renderQuestions();
+          break;
+        case 'questionResolved':
+          var a2 = agents.get(msg.id);
+          if (a2) { a2.status = 'active'; a2.question = null; }
+          renderAgents();
+          renderQuestions();
+          break;
+        case 'status':
+          var a3 = agents.get(msg.id);
+          if (a3) a3.status = msg.status;
+          renderAgents();
+          break;
+        case 'exited':
+          var a4 = agents.get(msg.id);
+          if (a4) a4.status = 'exited';
+          renderAgents();
+          break;
+        case 'destroyed':
+          agents.delete(msg.id);
+          renderAgents();
+          renderQuestions();
+          updateTargetSelect();
+          break;
+      }
+    }
+
+    // ─── Render ───
+    function escapeHtml(s) {
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function shortenPath(p) {
+      var m = p.match(/^\/Users\/[^/]+/);
+      if (m) return p.replace(m[0], '~');
+      return p;
+    }
+
+    function renderAgents() {
+      var list = document.getElementById('agent-list');
+      var empty = document.getElementById('empty-agents');
+
+      if (agents.size === 0) {
+        list.innerHTML = '';
+        empty.style.display = '';
+        return;
+      }
+      empty.style.display = 'none';
+
+      var html = '';
+      agents.forEach(function(agent) {
+        var preview = agentLastLines.get(agent.id) || '';
+        var elapsed = agent.startedAt ? formatElapsed(agent.startedAt) : '';
+        html += '<div class="agent-card" data-id="' + agent.id + '">' +
+          '<div class="agent-dot ' + agent.status + '"></div>' +
+          '<div class="agent-info">' +
+            '<div class="agent-card-name">' + escapeHtml(agent.name) + '</div>' +
+            '<div class="agent-card-path">' + escapeHtml(shortenPath(agent.cwd)) + '</div>' +
+            (preview ? '<div class="agent-card-preview">' + escapeHtml(preview) + '</div>' : '') +
+            (elapsed ? '<div class="agent-card-meta">' + elapsed + '</div>' : '') +
+          '</div>' +
+        '</div>';
+      });
+      list.innerHTML = html;
+
+      // Click agent card to open chat view
+      var cards = list.querySelectorAll('.agent-card');
+      for (var i = 0; i < cards.length; i++) {
+        cards[i].addEventListener('click', function() {
+          openAgentChat(this.dataset.id);
+        });
+      }
+    }
+
+    function updateAgentPreview(id) {
+      var el = document.querySelector('.agent-card[data-id="' + id + '"] .agent-card-preview');
+      if (el) {
+        el.textContent = agentLastLines.get(id) || '';
+      }
+    }
+
+    function renderQuestions() {
+      var list = document.getElementById('question-list');
+      var empty = document.getElementById('empty-questions');
+      var badge = document.getElementById('q-badge');
+
+      var html = '';
+      var count = 0;
+      agents.forEach(function(agent) {
+        if (!agent.question) return;
+        count++;
+        html += '<div class="question-card">' +
+          '<div class="question-from">' + escapeHtml(agent.name) + '</div>' +
+          '<div class="question-body">' + escapeHtml(agent.question) + '</div>' +
+          '<div class="question-actions">' +
+            '<input type="text" placeholder="Reply..." data-id="' + agent.id + '">' +
+            '<button data-id="' + agent.id + '">Send</button>' +
+          '</div>' +
+        '</div>';
+      });
+
+      list.innerHTML = html;
+      empty.style.display = count > 0 ? 'none' : '';
+      badge.style.display = count > 0 ? '' : 'none';
+      badge.textContent = count;
+
+      // Wire up reply buttons
+      var buttons = list.querySelectorAll('button');
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].addEventListener('click', function() {
+          var id = this.dataset.id;
+          var input = this.parentNode.querySelector('input');
+          var val = input.value.trim();
+          if (!val) return;
+          // Send Enter first (selection menus), then y+Enter (text prompts)
+          send({ type: 'input', id: id, data: '\r' });
+          var agentId = id;
+          setTimeout(function() {
+            send({ type: 'input', id: agentId, data: val + '\r' });
+          }, 150);
+          input.value = '';
+        });
+      }
+
+      // Enter key on inputs
+      var inputs = list.querySelectorAll('input');
+      for (var j = 0; j < inputs.length; j++) {
+        inputs[j].addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            this.parentNode.querySelector('button').click();
+          }
+        });
+      }
+    }
+
+    function updateTargetSelect() {
+      var sel = document.getElementById('target-agent');
+      var prev = sel.value;
+      var html = '';
+      agents.forEach(function(agent) {
+        html += '<option value="' + agent.id + '">' + escapeHtml(agent.name) + '</option>';
+      });
+      sel.innerHTML = html;
+      if (prev) sel.value = prev;
+      if (!sel.value && agents.size > 0) {
+        sel.value = agents.keys().next().value;
+      }
+    }
+
+    function formatElapsed(ts) {
+      var s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 60) return s + 's';
+      if (s < 3600) return Math.floor(s/60) + 'm';
+      return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+    }
+
+    // ─── Tabs ───
+    var tabs = document.querySelectorAll('.tab');
+    for (var t = 0; t < tabs.length; t++) {
+      tabs[t].addEventListener('click', function() {
+        for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+        this.classList.add('active');
+        var panels = document.querySelectorAll('.panel');
+        for (var j = 0; j < panels.length; j++) panels[j].classList.remove('active');
+        document.getElementById(this.dataset.panel).classList.add('active');
+      });
+    }
+
+    // ─── Send ───
+    document.getElementById('btn-send').addEventListener('click', function() {
+      var input = document.getElementById('mobile-input');
+      var sel = document.getElementById('target-agent');
+      var text = input.value.trim();
+      var id = sel.value;
+      if (!text || !id) return;
+      send({ type: 'input', id: id, data: text + '\r' });
+      input.value = '';
+    });
+
+    document.getElementById('mobile-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        document.getElementById('btn-send').click();
+      }
+    });
+
+    // ─── Agent Chat View ───
+    function openAgentChat(agentId) {
+      var agent = agents.get(agentId);
+      if (!agent) return;
+
+      viewingAgentId = agentId;
+      selectedAgentId = agentId;
+
+      // Update header
+      document.getElementById('chat-agent-name').textContent = agent.name;
+      var dot = document.getElementById('chat-agent-dot');
+      dot.className = 'agent-dot ' + agent.status;
+
+      // Load buffered output
+      var output = document.getElementById('chat-output');
+      var buf = agentOutputBuffers.get(agentId) || [];
+      output.textContent = buf.join('\n');
+
+      // Scroll to bottom
+      setTimeout(function() { output.scrollTop = output.scrollHeight; }, 50);
+
+      // Show chat panel, hide others
+      var panels = document.querySelectorAll('.panel');
+      for (var i = 0; i < panels.length; i++) panels[i].classList.remove('active');
+      document.getElementById('chat-panel').classList.add('active');
+
+      // Hide tabs and global input, show chat input
+      document.querySelector('.tabs').style.display = 'none';
+      document.getElementById('global-input-bar').style.display = 'none';
+
+      // Focus the chat input
+      setTimeout(function() { document.getElementById('chat-input').focus(); }, 100);
+    }
+
+    function closeAgentChat() {
+      viewingAgentId = null;
+
+      // Show tabs and global input
+      document.querySelector('.tabs').style.display = '';
+      document.getElementById('global-input-bar').style.display = '';
+
+      // Go back to agents panel
+      var panels = document.querySelectorAll('.panel');
+      for (var i = 0; i < panels.length; i++) panels[i].classList.remove('active');
+      document.getElementById('agents-panel').classList.add('active');
+
+      // Reset tab active state
+      var tabs = document.querySelectorAll('.tab');
+      for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove('active');
+      tabs[0].classList.add('active');
+    }
+
+    function appendChatOutput(text) {
+      var output = document.getElementById('chat-output');
+      if (!output) return;
+      var lines = text.split('\n').filter(function(l) { return l.trim(); });
+      if (lines.length === 0) return;
+
+      var wasAtBottom = (output.scrollHeight - output.scrollTop - output.clientHeight) < 50;
+      output.textContent += lines.join('\n') + '\n';
+
+      // Auto-scroll if user was at the bottom
+      if (wasAtBottom) {
+        output.scrollTop = output.scrollHeight;
+      }
+    }
+
+    // ─── New Agent from Mobile ───
+    var newBtn = document.getElementById('btn-new-mobile');
+    var newForm = document.getElementById('new-agent-form');
+    var createBtn = document.getElementById('btn-create-mobile');
+    var cancelBtn = document.getElementById('btn-cancel-mobile');
+
+    newBtn.addEventListener('click', function() {
+      newForm.style.display = newForm.style.display === 'none' ? '' : 'none';
+      if (newForm.style.display !== 'none') {
+        document.getElementById('m-agent-name').focus();
+      }
+    });
+
+    cancelBtn.addEventListener('click', function() {
+      newForm.style.display = 'none';
+    });
+
+    createBtn.addEventListener('click', function() {
+      var name = document.getElementById('m-agent-name').value.trim();
+      var cwd = document.getElementById('m-agent-cwd').value.trim();
+      if (!name || !cwd) return;
+      send({ type: 'create', name: name, cwd: cwd, command: 'claude' });
+      document.getElementById('m-agent-name').value = '';
+      document.getElementById('m-agent-cwd').value = '';
+      newForm.style.display = 'none';
+    });
+
+    // ─── Chat Back + Send ───
+    document.getElementById('btn-back').addEventListener('click', closeAgentChat);
+
+    document.getElementById('btn-chat-send').addEventListener('click', function() {
+      var input = document.getElementById('chat-input');
+      var text = input.value.trim();
+      if (!text || !viewingAgentId) return;
+      send({ type: 'input', id: viewingAgentId, data: text + '\r' });
+      input.value = '';
+    });
+
+    document.getElementById('chat-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        document.getElementById('btn-chat-send').click();
+      }
+    });
+
+    // ─── Init ───
+    connect();
+    setInterval(renderAgents, 30000); // Refresh elapsed times
+  </script>
+</body>
+</html>

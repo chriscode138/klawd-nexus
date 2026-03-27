@@ -1,0 +1,7 @@
+node_modules/
+public/js/bundle.js
+icon.iconset/
+*.icns
+dist/
+out/
+.DS_Store

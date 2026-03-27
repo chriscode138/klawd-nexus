@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#06060c">
+  <title>Claude Nexus - Login</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #06060c;
+      color: #eeeef3;
+      font-family: -apple-system, 'SF Pro Text', sans-serif;
+    }
+    .login-card {
+      width: 320px;
+      padding: 40px 30px;
+      text-align: center;
+    }
+    .logo {
+      font-size: 48px;
+      color: #7c6cf0;
+      filter: drop-shadow(0 0 20px rgba(124,108,240,0.3));
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #8b8ba3;
+      margin-bottom: 32px;
+    }
+    .pin-input {
+      width: 100%;
+      padding: 14px 18px;
+      font-size: 24px;
+      font-weight: 600;
+      text-align: center;
+      letter-spacing: 12px;
+      background: #0b0b15;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      color: #eeeef3;
+      outline: none;
+      margin-bottom: 16px;
+      -webkit-text-security: disc;
+    }
+    .pin-input:focus {
+      border-color: #7c6cf0;
+      box-shadow: 0 0 0 3px rgba(124,108,240,0.15);
+    }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      background: linear-gradient(135deg, #7c6cf0, #6b5cd9);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .error {
+      color: #ef4444;
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="logo">&loz;</div>
+    <h1>Claude Nexus</h1>
+    <p class="subtitle">Enter your PIN to access remotely</p>
+    <input type="tel" class="pin-input" id="pin" maxlength="6" placeholder="----" autofocus autocomplete="off">
+    <button class="btn" id="btn-login">Unlock</button>
+    <p class="error" id="error">Incorrect PIN</p>
+  </div>
+  <script>
+    document.getElementById('btn-login').addEventListener('click', login);
+    document.getElementById('pin').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') login();
+    });
+
+    function login() {
+      var pin = document.getElementById('pin').value;
+      if (!pin) return;
+      fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: pin })
+      })
+      .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      .then(function(res) {
+        if (res.ok) {
+          // Redirect to mobile view
+          window.location.href = '/mobile.html';
+        } else {
+          document.getElementById('error').style.display = '';
+          document.getElementById('pin').value = '';
+          document.getElementById('pin').focus();
+        }
+      });
+    }
+  </script>
+</body>
+</html>
