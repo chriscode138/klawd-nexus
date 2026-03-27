@@ -46,7 +46,7 @@ let showHiddenFiles = false;
 let searchBarVisible = false;
 let searchActiveAgentId = null;
 const MAX_PREVIEW_HISTORY = 50;
-const RECENT_DIRS_KEY = 'claude-nexus-recent-dirs';
+const RECENT_DIRS_KEY = 'klawd-nexus-recent-dirs';
 const MAX_RECENT_DIRS = 12;
 let sidebarDirty = false;
 let sidebarRafScheduled = false;
@@ -112,7 +112,7 @@ let dragStartX = 0;
 let dragStartWidth = 0;
 
 // Cycle 3: Sound mute
-let soundMuted = localStorage.getItem('claude-nexus-muted') === '1';
+let soundMuted = localStorage.getItem('klawd-nexus-muted') === '1';
 
 // Cycle 3: Context menu
 let contextMenuAgentId = null;
@@ -276,10 +276,10 @@ function clientStripAnsi(str) {
 }
 
 function shortenPath(p) {
-  // macOS: /Users/chris/... -> ~/...
+  // macOS: /Users/username/... -> ~/...
   const macMatch = p.match(/^\/Users\/[^/]+/);
   if (macMatch) return p.replace(macMatch[0], '~');
-  // Windows: C:\Users\chris\... -> ~\...
+  // Windows: C:\Users\username\... -> ~\...
   const winMatch = p.match(/^[A-Z]:\\Users\\[^\\]+/i);
   if (winMatch) return p.replace(winMatch[0], '~');
   return p;
@@ -468,7 +468,7 @@ function playSound(type) {
 
 function toggleMute() {
   soundMuted = !soundMuted;
-  localStorage.setItem('claude-nexus-muted', soundMuted ? '1' : '0');
+  localStorage.setItem('klawd-nexus-muted', soundMuted ? '1' : '0');
   updateMuteUI();
   showToast(soundMuted ? 'Notifications muted' : 'Notifications unmuted', 'info');
 }
@@ -846,7 +846,7 @@ function onAgentCreated(msg) {
     const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     terminal.write(
       '\x1b[38;5;99m\u250C\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\x1b[0m\r\n' +
-      '\x1b[38;5;99m\u2502\x1b[0m \x1b[1;38;5;141m\u25C6 Claude Nexus\x1b[0m\r\n' +
+      '\x1b[38;5;99m\u2502\x1b[0m \x1b[1;38;5;141m\u25C6 Klawd Nexus\x1b[0m\r\n' +
       '\x1b[38;5;99m\u2502\x1b[0m\r\n' +
       '\x1b[38;5;99m\u2502\x1b[0m \x1b[38;5;248mAgent:\x1b[0m  \x1b[1m' + name + '\x1b[0m\r\n' +
       '\x1b[38;5;99m\u2502\x1b[0m \x1b[38;5;248mDir:\x1b[0m    \x1b[38;5;75m' + cwd + '\x1b[0m\r\n' +
@@ -2453,7 +2453,7 @@ function renderQuestionList() {
     updateFaviconBadge(false);
     stopTabTitleRotation();
     const activeAgents = Array.from(agents.values()).filter(a => a.status !== 'exited').length;
-    document.title = activeAgents > 0 ? `Claude Nexus (${activeAgents})` : 'Claude Nexus';
+    document.title = activeAgents > 0 ? `Klawd Nexus (${activeAgents})` : 'Klawd Nexus';
   }
 
   // Restore focus after rebuild (ITEM 1)
@@ -4242,7 +4242,7 @@ function startTabTitleRotation() {
   const waiting = getWaitingAgentNames();
   if (waiting.length === 0) {
     stopTabTitleRotation();
-    document.title = 'Claude Nexus';
+    document.title = 'Klawd Nexus';
     return;
   }
 
@@ -4256,7 +4256,7 @@ function startTabTitleRotation() {
     const current = getWaitingAgentNames();
     if (current.length === 0) {
       stopTabTitleRotation();
-      document.title = 'Claude Nexus';
+      document.title = 'Klawd Nexus';
       return;
     }
     tabTitleRotationIndex = (tabTitleRotationIndex + 1) % current.length;
@@ -5781,9 +5781,13 @@ function generateQR(text, container) {
   img.style.height = '180px';
   img.style.borderRadius = '8px';
   img.src = '/api/qr?text=' + encodeURIComponent(text);
-  img.alt = 'Scan to open Claude Nexus on your phone';
+  img.alt = 'Scan to open Klawd Nexus on your phone';
   img.onerror = () => {
-    container.innerHTML = '<div style="padding:20px;font-size:11px;color:#333;word-break:break-all;">' + text + '</div>';
+    const fallback = document.createElement('div');
+    fallback.style.cssText = 'padding:20px;font-size:11px;color:#333;word-break:break-all;';
+    fallback.textContent = text;
+    container.innerHTML = '';
+    container.appendChild(fallback);
   };
   container.appendChild(img);
 }

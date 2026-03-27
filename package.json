@@ -1,6 +1,6 @@
 {
-  "name": "Claude Nexus",
-  "productName": "Claude Nexus",
+  "name": "klawd-nexus",
+  "productName": "Klawd Nexus",
   "version": "1.0.0",
   "description": "Multi-terminal Claude Code command center",
   "main": "electron.js",

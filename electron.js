@@ -3,9 +3,9 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 
 // Force the app name BEFORE anything else
-app.setName('Claude Nexus');
+app.setName('Klawd Nexus');
 
-// Patch the Electron binary's Info.plist so macOS shows "Claude Nexus" in the menu bar
+// Patch the Electron binary's Info.plist so macOS shows "Klawd Nexus" in the menu bar
 if (process.platform === 'darwin') {
   try {
     const electronPath = path.dirname(process.execPath);
@@ -13,11 +13,11 @@ if (process.platform === 'darwin') {
     const fs = require('fs');
     if (fs.existsSync(plistPath)) {
       let plist = fs.readFileSync(plistPath, 'utf-8');
-      if (!plist.includes('Claude Nexus')) {
+      if (!plist.includes('Klawd Nexus')) {
         plist = plist.replace(/<key>CFBundleName<\/key>\s*<string>[^<]*<\/string>/,
-          '<key>CFBundleName</key>\n\t<string>Claude Nexus</string>');
+          '<key>CFBundleName</key>\n\t<string>Klawd Nexus</string>');
         plist = plist.replace(/<key>CFBundleDisplayName<\/key>\s*<string>[^<]*<\/string>/,
-          '<key>CFBundleDisplayName</key>\n\t<string>Claude Nexus</string>');
+          '<key>CFBundleDisplayName</key>\n\t<string>Klawd Nexus</string>');
         fs.writeFileSync(plistPath, plist, 'utf-8');
       }
     }
@@ -45,7 +45,7 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 500,
-    title: 'Claude Nexus',
+    title: 'Klawd Nexus',
     ...(process.platform === 'darwin' ? {
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 16, y: 16 },
@@ -171,4 +171,4 @@ app.on('before-quit', () => {
 });
 
 // Set the app name
-app.setName('Claude Nexus');
+app.setName('Klawd Nexus');

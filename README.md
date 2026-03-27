@@ -1,4 +1,4 @@
-# Claude Nexus
+# Klawd Nexus
 
 A desktop command center for managing multiple Claude Code terminal sessions simultaneously. Built for power users who run several Claude Code agents across different projects and need a single pane of glass to orchestrate them all.
 
@@ -60,8 +60,8 @@ A desktop command center for managing multiple Claude Code terminal sessions sim
 
 ```bash
 # Clone and install
-git clone https://github.com/yourusername/claude-nexus.git
-cd claude-nexus
+git clone https://github.com/yourusername/klawd-nexus.git
+cd klawd-nexus
 npm install
 
 # Run in browser
@@ -107,7 +107,7 @@ PORT=4000 npm start
 ## Architecture
 
 ```
-claude-nexus/
+klawd-nexus/
   electron.js       # Electron main process (desktop app wrapper)
   server.js          # Express + WebSocket + node-pty server
   src/app.js         # Frontend application (bundled by esbuild)
@@ -125,8 +125,8 @@ claude-nexus/
 
 ## Data Storage
 
-- Workspaces: `~/.claude-nexus/workspaces.json`
-- Config/PIN: `~/.claude-nexus/config.json`
+- Workspaces: `~/.klawd-nexus/workspaces.json`
+- Config/PIN: `~/.klawd-nexus/config.json`
 - MCP servers: `~/.mcp.json` (Claude Code's native config)
 - UI preferences (sidebar width, mute state, snippets, etc.): browser localStorage
 

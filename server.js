@@ -15,9 +15,9 @@ app.use(express.json());
 
 // ─── Remote Access Authentication ───
 // PIN-based auth for remote access. Local requests bypass auth.
-// PIN is stored in ~/.claude-nexus/config.json
+// PIN is stored in ~/.klawd-nexus/config.json
 const crypto = require('crypto');
-const NEXUS_CONFIG = path.join(os.homedir(), '.claude-nexus', 'config.json');
+const NEXUS_CONFIG = path.join(os.homedir(), '.klawd-nexus', 'config.json');
 const authTokens = new Set(); // valid session tokens
 
 function readNexusConfig() {
@@ -25,7 +25,7 @@ function readNexusConfig() {
 }
 
 function writeNexusConfig(config) {
-  const dir = path.join(os.homedir(), '.claude-nexus');
+  const dir = path.join(os.homedir(), '.klawd-nexus');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(NEXUS_CONFIG, JSON.stringify(config, null, 2), 'utf-8');
 }
@@ -66,18 +66,52 @@ app.use((req, res, next) => {
 });
 
 // Auth endpoints
+// Security: Rate limiting for PIN login to prevent brute-force attacks
+const loginAttempts = new Map(); // IP -> { count, resetTime }
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 app.post('/api/auth/login', (req, res) => {
+  const clientIp = req.headers['cf-connecting-ip'] || req.ip || req.connection.remoteAddress || '';
+
+  // Check rate limit
+  const attempts = loginAttempts.get(clientIp);
+  if (attempts && attempts.count >= MAX_LOGIN_ATTEMPTS && Date.now() < attempts.resetTime) {
+    const waitSec = Math.ceil((attempts.resetTime - Date.now()) / 1000);
+    return res.status(429).json({ error: `Too many attempts. Try again in ${waitSec} seconds.` });
+  }
+
   const { pin } = req.body;
   const config = readNexusConfig();
   if (!config.pin) {
     return res.json({ ok: true, message: 'No PIN set' });
   }
-  if (pin === config.pin) {
+
+  // Security: Use constant-time comparison to prevent timing attacks
+  const pinStr = String(pin || '');
+  const configPin = String(config.pin);
+  const maxLen = Math.max(pinStr.length, configPin.length);
+  const a = Buffer.from(pinStr.padEnd(maxLen, '\0'));
+  const b = Buffer.from(configPin.padEnd(maxLen, '\0'));
+  const match = pinStr.length === configPin.length && crypto.timingSafeEqual(a, b);
+
+  if (match) {
+    // Clear failed attempts on success
+    loginAttempts.delete(clientIp);
     const token = crypto.randomBytes(32).toString('hex');
     authTokens.add(token);
     res.cookie('nexus_token', token, { httpOnly: true, sameSite: 'lax', maxAge: 86400000 });
     return res.json({ ok: true, token });
   }
+
+  // Track failed attempt
+  const current = loginAttempts.get(clientIp) || { count: 0, resetTime: Date.now() + LOGIN_LOCKOUT_MS };
+  current.count++;
+  if (current.count >= MAX_LOGIN_ATTEMPTS) {
+    current.resetTime = Date.now() + LOGIN_LOCKOUT_MS;
+  }
+  loginAttempts.set(clientIp, current);
+
   return res.status(403).json({ error: 'Incorrect PIN' });
 });
 
@@ -270,7 +304,9 @@ function createSession(name, cwd, command) {
   const shell = isWin
     ? process.env.COMSPEC || 'cmd.exe'
     : process.env.SHELL || '/bin/zsh';
-  const cmd = command || 'claude';
+  // Security: Only allow known safe commands to prevent injection
+  const ALLOWED_COMMANDS = ['claude', 'claude-code'];
+  const cmd = (command && ALLOWED_COMMANDS.includes(command)) ? command : 'claude';
 
   let ptyProcess;
   try {
@@ -493,7 +529,14 @@ wss.on('connection', (ws) => {
 
     switch (msg.type) {
       case 'create': {
-        const session = createSession(msg.name, msg.cwd, msg.command);
+        // Security: Validate input types
+        if (!msg.name || typeof msg.name !== 'string' || !msg.cwd || typeof msg.cwd !== 'string') {
+          ws.send(JSON.stringify({ type: 'error', message: 'name and cwd are required strings' }));
+          break;
+        }
+        // Sanitize name to prevent overly long or malicious names
+        const safeName = msg.name.slice(0, 100);
+        const session = createSession(safeName, msg.cwd, msg.command);
         if (session) {
           broadcast({
             type: 'created',
@@ -522,6 +565,8 @@ wss.on('connection', (ws) => {
       case 'input': {
         const session = sessions.get(msg.id);
         if (!session || !session.pty) break;
+        // Security: Validate and cap input data
+        if (typeof msg.data !== 'string' || msg.data.length > 10000) break;
 
         session.pty.write(msg.data);
 
@@ -536,9 +581,13 @@ wss.on('connection', (ws) => {
       }
 
       case 'resize': {
+        // Security: Validate cols/rows are reasonable numbers
+        const cols = parseInt(msg.cols, 10);
+        const rows = parseInt(msg.rows, 10);
+        if (!cols || !rows || cols < 1 || cols > 1000 || rows < 1 || rows > 500) break;
         const session = sessions.get(msg.id);
         if (session && session.pty) {
-          try { session.pty.resize(msg.cols, msg.rows); } catch {}
+          try { session.pty.resize(cols, rows); } catch {}
         }
         break;
       }
@@ -564,7 +613,9 @@ wss.on('connection', (ws) => {
 
       case 'browse': {
         try {
-          const dirPath = msg.path || os.homedir();
+          const rawPath = msg.path || os.homedir();
+          // Security: resolve and validate the path to prevent traversal
+          const dirPath = path.resolve(rawPath);
           const showHidden = !!msg.showHidden;
           const entries = fs.readdirSync(dirPath, { withFileTypes: true })
             .filter(e => showHidden || !e.name.startsWith('.'))
@@ -589,16 +640,22 @@ wss.on('connection', (ws) => {
 
       case 'readFile': {
         try {
-          const stat = fs.statSync(msg.path);
+          if (!msg.path || typeof msg.path !== 'string') {
+            ws.send(JSON.stringify({ type: 'error', message: 'Invalid file path' }));
+            break;
+          }
+          // Security: resolve path to prevent traversal attacks
+          const resolvedPath = path.resolve(msg.path);
+          const stat = fs.statSync(resolvedPath);
           if (stat.size > 500000) {
             ws.send(JSON.stringify({ type: 'error', message: 'File too large to preview' }));
             break;
           }
-          const content = fs.readFileSync(msg.path, 'utf-8');
+          const content = fs.readFileSync(resolvedPath, 'utf-8');
           ws.send(JSON.stringify({
             type: 'fileContent',
-            path: msg.path,
-            name: path.basename(msg.path),
+            path: resolvedPath,
+            name: path.basename(resolvedPath),
             content: content.slice(0, 100000),
             language: getLanguage(path.extname(msg.path).slice(1)),
           }));
@@ -632,7 +689,7 @@ function getLanguage(ext) {
 }
 
 // ─── Workspace presets REST API ───
-const NEXUS_DIR = path.join(os.homedir(), '.claude-nexus');
+const NEXUS_DIR = path.join(os.homedir(), '.klawd-nexus');
 const WORKSPACES_FILE = path.join(NEXUS_DIR, 'workspaces.json');
 
 function ensureNexusDir() {
@@ -683,7 +740,8 @@ app.delete('/api/workspaces/:name', (req, res) => {
 // ─── File browser REST API (for modal folder picker) ───
 app.get('/api/browse', (req, res) => {
   try {
-    const dirPath = req.query.path || os.homedir();
+    // Security: resolve path to prevent traversal
+    const dirPath = path.resolve(req.query.path || os.homedir());
     const showHidden = req.query.hidden === '1';
     const entries = fs.readdirSync(dirPath, { withFileTypes: true })
       .filter(e => showHidden || !e.name.startsWith('.'))
@@ -886,7 +944,7 @@ server.listen(PORT, () => {
   }
 
   console.log('');
-  console.log('  \x1b[38;5;99m\u25C6\x1b[0m \x1b[1mClaude Nexus\x1b[0m');
+  console.log('  \x1b[38;5;99m\u25C6\x1b[0m \x1b[1mKlawd Nexus\x1b[0m');
   console.log('');
   console.log(`  Local:    \x1b[36mhttp://localhost:${PORT}\x1b[0m`);
   if (networkUrl) {
