@@ -1,6 +1,6 @@
-const { app, BrowserWindow, Menu, Tray, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Menu, nativeImage, shell } = require('electron');
 const path = require('path');
-const { spawn, execSync } = require('child_process');
+const { execSync } = require('child_process');
 
 // Force the app name BEFORE anything else
 app.setName('Klawd Nexus');
@@ -25,7 +25,6 @@ if (process.platform === 'darwin') {
 }
 
 let mainWindow = null;
-let tray = null;
 const PORT = 4000;
 
 // ─── Start the Express server in-process (no child spawn = no second dock icon) ───
@@ -169,6 +168,3 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   // Server runs in-process, exits automatically with the app
 });
-
-// Set the app name
-app.setName('Klawd Nexus');

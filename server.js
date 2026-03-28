@@ -527,6 +527,7 @@ wss.on('connection', (ws) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
 
+    try {
     switch (msg.type) {
       case 'create': {
         // Security: Validate input types
@@ -596,7 +597,7 @@ wss.on('connection', (ws) => {
         const session = sessions.get(msg.id);
         if (session) {
           if (session._qTimerFast) clearTimeout(session._qTimerFast);
-    if (session._qTimerSlow) clearTimeout(session._qTimerSlow);
+          if (session._qTimerSlow) clearTimeout(session._qTimerSlow);
           if (session._idleTimer) clearTimeout(session._idleTimer);
           if (session._startupTimer) clearTimeout(session._startupTimer);
           try { session.pty.kill(); } catch {}
@@ -664,6 +665,9 @@ wss.on('connection', (ws) => {
         }
         break;
       }
+    }
+    } catch (err) {
+      // Prevent a single malformed message from crashing the server
     }
   });
 
@@ -828,7 +832,7 @@ app.delete('/api/mcp-servers/:name', (req, res) => {
 });
 
 // ─── Cloudflare Tunnel for remote access ───
-const { spawn: cpSpawn } = require('child_process');
+const cpSpawn = require('child_process').spawn;
 let tunnelProcess = null;
 let tunnelUrl = null;
 
@@ -840,7 +844,10 @@ app.post('/api/tunnel/start', (req, res) => {
   // Find cloudflared binary
   const findCmd = process.platform === 'win32' ? 'where cloudflared 2>nul' : 'which cloudflared 2>/dev/null';
   let which = '';
-  try { which = require('child_process').execSync(findCmd).toString().trim().split('\n')[0]; } catch {}
+  try {
+    const { execSync: execSyncLocal } = require('child_process');
+    which = execSyncLocal(findCmd).toString().trim().split('\n')[0];
+  } catch {}
   if (!which) {
     return res.status(400).json({ error: 'cloudflared not installed. Run: brew install cloudflare/cloudflare/cloudflared' });
   }
@@ -858,7 +865,6 @@ app.post('/api/tunnel/start', (req, res) => {
     if (match && !resolved) {
       resolved = true;
       tunnelUrl = match[0];
-      console.log(`  Tunnel:   \x1b[36m${tunnelUrl}\x1b[0m`);
       // Broadcast to all connected clients
       broadcast({ type: 'tunnel', url: tunnelUrl });
     }

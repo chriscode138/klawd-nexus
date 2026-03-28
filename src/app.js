@@ -140,6 +140,74 @@ const lastViewedLines = new Map();
 // Cycle 4: Status bar filter
 let statusFilter = null; // null = show all, 'active' | 'waiting' | 'exited'
 
+// Agent Groups (tag/tab system)
+const AGENT_GROUPS_KEY = 'klawd-nexus-agent-groups';
+let agentGroups = new Map(); // group name -> Set of agent IDs
+let activeGroupFilter = null; // null = "All", otherwise group name string
+
+function loadAgentGroups() {
+  try {
+    const stored = localStorage.getItem(AGENT_GROUPS_KEY);
+    if (stored) {
+      const obj = JSON.parse(stored);
+      agentGroups = new Map();
+      for (const [name, ids] of Object.entries(obj)) {
+        agentGroups.set(name, new Set(ids));
+      }
+    }
+  } catch {}
+}
+
+function saveAgentGroups() {
+  try {
+    const obj = {};
+    for (const [name, ids] of agentGroups) {
+      obj[name] = Array.from(ids);
+    }
+    localStorage.setItem(AGENT_GROUPS_KEY, JSON.stringify(obj));
+  } catch {}
+}
+
+function addAgentToGroup(agentId, groupName) {
+  if (!agentGroups.has(groupName)) {
+    agentGroups.set(groupName, new Set());
+  }
+  agentGroups.get(groupName).add(agentId);
+  saveAgentGroups();
+  renderGroupTabs();
+  renderSidebar();
+}
+
+function removeAgentFromGroup(agentId, groupName) {
+  const group = agentGroups.get(groupName);
+  if (group) {
+    group.delete(agentId);
+    if (group.size === 0) {
+      agentGroups.delete(groupName);
+      if (activeGroupFilter === groupName) activeGroupFilter = null;
+    }
+    saveAgentGroups();
+    renderGroupTabs();
+    renderSidebar();
+  }
+}
+
+function deleteGroup(groupName) {
+  agentGroups.delete(groupName);
+  if (activeGroupFilter === groupName) activeGroupFilter = null;
+  saveAgentGroups();
+  renderGroupTabs();
+  renderSidebar();
+}
+
+function getAgentGroupNames(agentId) {
+  const names = [];
+  for (const [name, ids] of agentGroups) {
+    if (ids.has(agentId)) names.push(name);
+  }
+  return names;
+}
+
 // Cycle 5: Snippets
 const SNIPPETS_KEY = 'nexus-snippets';
 const DEFAULT_SNIPPETS = [
@@ -304,6 +372,7 @@ function formatElapsed(startMs) {
 
 function showToast(message, type = 'info') {
   const container = $('#toast-container');
+  if (!container) return;
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.textContent = message;
@@ -319,6 +388,8 @@ function showConfirmDialog(message, onConfirm) {
   const msgEl = $('#confirm-message');
   const cancelBtn = $('#confirm-cancel');
   const okBtn = $('#confirm-ok');
+
+  if (!overlay || !msgEl || !cancelBtn || !okBtn) return;
 
   msgEl.textContent = message;
   overlay.classList.remove('hidden');
@@ -584,8 +655,8 @@ function connect() {
   ws.onmessage = (event) => {
     try {
       handleMessage(JSON.parse(event.data));
-    } catch (err) {
-      console.error('Message parse error:', err);
+    } catch {
+      // Silently handle malformed messages
     }
   };
 
@@ -673,7 +744,11 @@ function hideDisconnectedBanner() {
 
 function send(msg) {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(msg));
+    try {
+      ws.send(JSON.stringify(msg));
+    } catch {
+      // WebSocket may have closed between the readyState check and send
+    }
   }
 }
 
@@ -784,8 +859,18 @@ function onAgentCreated(msg) {
   setTimeout(forceRefont, 2000);
 
   // Only forward control sequences (Ctrl+C, Ctrl+D, arrow keys, etc.)
-  // All text input goes through the floating input bar
+  // All text input goes through the floating input bar.
+  // Guard: suppress data events briefly after focus to prevent buffered
+  // keyboard input from flushing into the PTY when the terminal gains focus.
+  let _focusSuppressUntil = 0;
+  terminal.textarea?.addEventListener('focus', () => {
+    _focusSuppressUntil = Date.now() + 50; // 50ms grace period after focus
+  });
+
   terminal.onData((data) => {
+    // Suppress any data that arrives right after focus (prevents buffered flush)
+    if (Date.now() < _focusSuppressUntil) return;
+
     const code = data.charCodeAt(0);
     // Allow: Ctrl keys (codes 1-26), Escape (27), arrow/function keys (start with \x1b[)
     if (code <= 26 || code === 27 || data.startsWith('\x1b[') || data.startsWith('\x1b0')) {
@@ -891,7 +976,7 @@ function onTerminalOutput(msg) {
   // Preemptive UX: Track output while tab is hidden (away summary)
   if (tabHiddenSince !== null) {
     if (!awayOutputTracker.has(msg.id)) {
-      awayOutputTracker.set(msg.id, { lineCount: 0, lastLines: [] });
+      awayOutputTracker.set(msg.id, { lineCount: 0, lastLines: [], hadQuestion: false });
     }
     const tracker = awayOutputTracker.get(msg.id);
     tracker.lineCount += Math.max(newLines, 1);
@@ -929,6 +1014,16 @@ function onQuestion(msg) {
     agent.status = 'waiting';
     agent.question = msg.text;
     agent.questionTime = msg.timestamp || Date.now();
+  }
+
+  // Track questions while tab is hidden (for away summary)
+  if (tabHiddenSince !== null) {
+    if (!awayOutputTracker.has(msg.id)) {
+      awayOutputTracker.set(msg.id, { lineCount: 0, lastLines: [], hadQuestion: false });
+    }
+    const tracker = awayOutputTracker.get(msg.id);
+    tracker.hadQuestion = true;
+    tracker.lastLines = [msg.text.substring(0, 100)];
   }
 
   // Cycle 4: Auto-reply check (global or per-agent)
@@ -1024,6 +1119,14 @@ function onAgentDestroyed(msg) {
   agentLastOutputTime.delete(msg.id);
   agentLastLine.delete(msg.id);
   agentSmartStatus.delete(msg.id);
+
+  // Clean up agent from any groups
+  for (const [gName, gIds] of agentGroups) {
+    gIds.delete(msg.id);
+    if (gIds.size === 0) agentGroups.delete(gName);
+  }
+  saveAgentGroups();
+  renderGroupTabs();
 
   // Check for pending restart (ITEM 3 race condition fix)
   const restart = pendingRestarts.get(msg.id);
@@ -1911,8 +2014,8 @@ function initAwaySummary() {
         const awayDuration = Date.now() - tabHiddenSince;
         tabHiddenSince = null;
 
-        // Only show if away for 60+ seconds and there was activity
-        if (awayDuration >= 60000 && awayOutputTracker.size > 0) {
+        // Only show if away for 5+ minutes and there were questions
+        if (awayDuration >= 300000 && awayOutputTracker.size > 0) {
           showAwaySummary();
         } else {
           awayOutputTracker.clear();
@@ -1940,14 +2043,18 @@ function showAwaySummary() {
   html += '</button></div>';
   html += '<div class="away-summary-items">';
 
+  let shownCount = 0;
   for (const [agentId, tracker] of awayOutputTracker) {
+    // Only show agents that had questions while away
+    if (!tracker.hadQuestion) continue;
     const agent = agents.get(agentId);
     if (!agent) continue;
+    shownCount++;
 
     html += `<div class="away-summary-agent" data-agent-id="${agentId}">`;
     html += `<div class="away-summary-agent-header">`;
     html += `<span class="away-summary-agent-name">${escapeHtml(agent.name)}</span>`;
-    html += `<span class="away-summary-line-count">${tracker.lineCount} lines</span>`;
+    html += `<span class="away-summary-line-count">asked a question</span>`;
     html += `</div>`;
     if (tracker.lastLines.length > 0) {
       html += `<div class="away-summary-preview">`;
@@ -1957,6 +2064,12 @@ function showAwaySummary() {
       html += `</div>`;
     }
     html += `</div>`;
+  }
+
+  // Don't show if no agents had questions
+  if (shownCount === 0) {
+    awayOutputTracker.clear();
+    return;
   }
 
   html += '</div>';
@@ -1979,8 +2092,8 @@ function showAwaySummary() {
     });
   }
 
-  // Auto-dismiss after 15 seconds
-  setTimeout(() => dismissAwaySummary(), 15000);
+  // Auto-dismiss after 8 seconds
+  setTimeout(() => dismissAwaySummary(), 8000);
 
   // Clear the tracker
   awayOutputTracker.clear();
@@ -3311,8 +3424,13 @@ function showContextMenu(e, agentId) {
   contextMenuAgentId = agentId;
   const menu = $('#context-menu');
   const colorsPanel = $('#context-menu-colors');
+  const groupsPanel = $('#context-menu-groups');
   colorsPanel.classList.add('hidden');
+  if (groupsPanel) groupsPanel.classList.add('hidden');
   menu.classList.remove('hidden');
+
+  // Populate groups submenu
+  updateGroupSubmenu(agentId);
 
   // Update pin label
   const agent = agents.get(agentId);
@@ -3368,6 +3486,8 @@ function showContextMenu(e, agentId) {
 function hideContextMenu() {
   const menu = $('#context-menu');
   menu.classList.add('hidden');
+  const groupsPanel = $('#context-menu-groups');
+  if (groupsPanel) groupsPanel.classList.add('hidden');
   contextMenuAgentId = null;
 }
 
@@ -3431,6 +3551,12 @@ function initContextMenu() {
         colorsPanel.classList.toggle('hidden');
         return; // Don't close menu
 
+      case 'group':
+        // Toggle groups submenu
+        const groupsPanel = $('#context-menu-groups');
+        groupsPanel.classList.toggle('hidden');
+        return; // Don't close menu
+
       case 'export':
         hideContextMenu();
         exportAgentSession(agent.id);
@@ -3444,6 +3570,56 @@ function initContextMenu() {
         break;
     }
   });
+
+  // Handle group submenu clicks
+  menu.addEventListener('click', (e) => {
+    const groupItem = e.target.closest('.context-menu-group-item');
+    if (!groupItem || !contextMenuAgentId) return;
+
+    const action = groupItem.dataset.groupAction;
+    if (action === 'new') {
+      hideContextMenu();
+      const name = prompt('Group name:');
+      if (name && name.trim()) {
+        addAgentToGroup(contextMenuAgentId, name.trim());
+        showToast(`Added to group "${name.trim()}"`, 'info');
+      }
+    } else if (action === 'toggle') {
+      const gName = groupItem.dataset.groupName;
+      const group = agentGroups.get(gName);
+      if (group && group.has(contextMenuAgentId)) {
+        removeAgentFromGroup(contextMenuAgentId, gName);
+        showToast(`Removed from "${gName}"`, 'info');
+      } else {
+        addAgentToGroup(contextMenuAgentId, gName);
+        showToast(`Added to "${gName}"`, 'info');
+      }
+      // Update the checkmarks without closing
+      updateGroupSubmenu(contextMenuAgentId);
+    }
+  });
+}
+
+function updateGroupSubmenu(agentId) {
+  const groupsPanel = $('#context-menu-groups');
+  if (!groupsPanel) return;
+
+  const agentGroupNames = getAgentGroupNames(agentId);
+
+  let html = '';
+  for (const [gName] of agentGroups) {
+    const inGroup = agentGroupNames.includes(gName);
+    html += `<div class="context-menu-group-item" data-group-action="toggle" data-group-name="${escapeAttr(gName)}">
+      <span class="group-check">${inGroup ? '\u2713' : ''}</span>
+      <span>${escapeHtml(gName)}</span>
+    </div>`;
+  }
+  html += '<div class="context-menu-divider"></div>';
+  html += `<div class="context-menu-group-item" data-group-action="new">
+    <span class="group-check">+</span>
+    <span>New Group...</span>
+  </div>`;
+  groupsPanel.innerHTML = html;
 }
 
 function startInlineRename(agent) {
@@ -3788,7 +3964,10 @@ function loadWorkspaceMenu() {
           const name = delBtn.dataset.name;
           showConfirmDialog(`Delete workspace "${name}"?`, () => {
             fetch(`/api/workspaces/${encodeURIComponent(name)}`, { method: 'DELETE' })
-              .then(r => r.json())
+              .then(r => {
+                if (!r.ok) throw new Error(`Server error ${r.status}`);
+                return r.json();
+              })
               .then(() => {
                 showToast(`Workspace "${name}" deleted`, 'success');
                 dropdown.classList.add('hidden');
@@ -3947,7 +4126,50 @@ function getFilteredSortedAgents() {
   if (statusFilter) {
     all = all.filter(a => a.status === statusFilter);
   }
+  // Apply group filter
+  if (activeGroupFilter) {
+    const groupIds = agentGroups.get(activeGroupFilter);
+    if (groupIds) {
+      all = all.filter(a => groupIds.has(a.id));
+    }
+  }
   return all;
+}
+
+function renderGroupTabs() {
+  const container = $('#group-tabs');
+  if (!container) return;
+
+  let html = `<button class="group-tab${!activeGroupFilter ? ' active' : ''}" data-group="">All</button>`;
+  for (const [name] of agentGroups) {
+    const isActive = activeGroupFilter === name;
+    html += `<button class="group-tab${isActive ? ' active' : ''}" data-group="${escapeAttr(name)}">
+      <span>${escapeHtml(name)}</span>
+      <span class="group-tab-x" data-group-delete="${escapeAttr(name)}" title="Remove group">&times;</span>
+    </button>`;
+  }
+  container.innerHTML = html;
+
+  // Show or hide the container based on whether groups exist
+  container.style.display = agentGroups.size > 0 ? '' : 'none';
+
+  // Bind click handlers
+  for (const tab of container.querySelectorAll('.group-tab')) {
+    tab.addEventListener('click', (e) => {
+      // If click was on the X button, delete the group instead
+      const deleteBtn = e.target.closest('.group-tab-x');
+      if (deleteBtn) {
+        e.stopPropagation();
+        const gName = deleteBtn.dataset.groupDelete;
+        deleteGroup(gName);
+        return;
+      }
+      const g = tab.dataset.group;
+      activeGroupFilter = g || null;
+      renderGroupTabs();
+      renderSidebar();
+    });
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -4377,8 +4599,10 @@ function initScrollTracking() {
 
 function init() {
   loadCmdHistory();
+  loadAgentGroups();
   connect();
   initSidebarTabs();
+  renderGroupTabs();
   initResizablePanels();
   initContextMenu();
   initShortcutOverlay();
@@ -4966,7 +5190,10 @@ function initDirValidation() {
     }
     dirValidationTimeout = setTimeout(() => {
       fetch(`/api/validate-dir?path=${encodeURIComponent(val)}`)
-        .then(r => r.json())
+        .then(r => {
+          if (!r.ok) throw new Error('Validation request failed');
+          return r.json();
+        })
         .then(data => {
           if (data.valid) {
             cwdInput.classList.remove('input-invalid');
@@ -5009,9 +5236,8 @@ const _origSetItem = localStorage.setItem.bind(localStorage);
 localStorage.setItem = function(key, value) {
   try {
     _origSetItem(key, value);
-  } catch (e) {
-    console.warn('localStorage full, clearing old Nexus data:', e.message);
-    // Remove non-essential cached data
+  } catch {
+    // localStorage full, clear non-essential cached data
     try {
       localStorage.removeItem('nexus-last-workspace');
       localStorage.removeItem(SNIPPETS_KEY);
@@ -5096,13 +5322,6 @@ function showSnippetContextMenu(e, text) {
   };
   setTimeout(() => document.addEventListener('click', closeMenu), 0);
 }
-
-// ═══════════════════════════════════════════
-// Cycle 5: Export button in terminal header
-// ═══════════════════════════════════════════
-
-// Add Cmd+A for select all (when not in input)
-// and update keyboard shortcuts
 
 // ═══════════════════════════════════════════
 // Preemptive UX: Startup Prompt Init
@@ -5658,7 +5877,10 @@ function initRemoteAccess() {
     overlay.classList.remove('hidden');
     // Check current status
     fetch('/api/tunnel/status')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to check tunnel status');
+        return r.json();
+      })
       .then(data => {
         if (data.active && data.url) {
           showTunnelActive(data.url);
@@ -5678,7 +5900,10 @@ function initRemoteAccess() {
   const pinStatus = $('#pin-status');
 
   function refreshPinStatus() {
-    fetch('/api/auth/check').then(r => r.json()).then(data => {
+    fetch('/api/auth/check').then(r => {
+      if (!r.ok) throw new Error('Failed to check PIN status');
+      return r.json();
+    }).then(data => {
       pinStatus.textContent = data.pinRequired ? 'PIN is set. Remote access requires authentication.' : 'No PIN set. Remote access is open to anyone with the URL.';
       pinStatus.style.color = data.pinRequired ? 'var(--color-success)' : 'var(--color-warning)';
     }).catch(() => {});
@@ -5693,7 +5918,10 @@ function initRemoteAccess() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin }),
-      }).then(r => r.json()).then(() => {
+      }).then(r => {
+        if (!r.ok) throw new Error('Failed to set PIN');
+        return r.json();
+      }).then(() => {
         showToast('PIN set. Remote access now requires authentication.', 'success');
         pinInput.value = '';
         refreshPinStatus();
@@ -5707,7 +5935,10 @@ function initRemoteAccess() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: null }),
-      }).then(r => r.json()).then(() => {
+      }).then(r => {
+        if (!r.ok) throw new Error('Failed to clear PIN');
+        return r.json();
+      }).then(() => {
         showToast('PIN cleared. Remote access is now open.', 'info');
         pinInput.value = '';
         refreshPinStatus();
@@ -5722,7 +5953,10 @@ function initRemoteAccess() {
     $('#remote-active').style.display = 'none';
 
     fetch('/api/tunnel/start', { method: 'POST' })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('Failed to start tunnel');
+        return r.json();
+      })
       .then(data => {
         if (data.error) {
           showToast(data.error, 'error');

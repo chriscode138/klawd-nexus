@@ -284,8 +284,20 @@
       font-size: 13px;
       line-height: 1.7;
       color: var(--text2);
-      white-space: pre-wrap;
       word-break: break-word;
+    }
+    .output-content .output-block {
+      margin-bottom: 8px;
+    }
+    .output-content .code-block {
+      background: var(--surface2);
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin: 4px 0 8px;
+      font-size: 12px;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
     }
 
     /* ─── Input Bar ─── */
@@ -420,8 +432,11 @@
 
     <div class="content">
       <div class="panel active" id="agents-panel">
-        <div style="padding:10px 16px;border-bottom:1px solid var(--border);">
-          <button id="btn-new-mobile" style="width:100%;padding:12px;font-size:14px;font-weight:600;background:var(--accent);color:white;border:none;border-radius:10px;cursor:pointer;">+ New Agent</button>
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;">
+          <select id="m-group-filter" style="padding:10px 8px;font-size:13px;background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:8px;display:none;">
+            <option value="">All Agents</option>
+          </select>
+          <button id="btn-new-mobile" style="flex:1;padding:12px;font-size:14px;font-weight:600;background:var(--accent);color:white;border:none;border-radius:10px;cursor:pointer;">+ New Agent</button>
         </div>
         <div id="new-agent-form" style="display:none;padding:14px 16px;border-bottom:1px solid var(--border);background:var(--surface);">
           <input type="text" id="m-agent-name" placeholder="Agent name" style="width:100%;padding:10px 12px;font-size:15px;background:var(--bg);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:var(--text);outline:none;margin-bottom:8px;">
@@ -472,6 +487,44 @@
     let selectedAgentId = null;
     let viewingAgentId = null; // Currently viewing in chat panel
     let reconnectTimer = null;
+    let mobileGroupFilter = ''; // '' = All
+
+    // Load agent groups from localStorage (same key as desktop)
+    function loadMobileGroups() {
+      try {
+        var stored = localStorage.getItem('klawd-nexus-agent-groups');
+        if (stored) return JSON.parse(stored);
+      } catch(e) {}
+      return {};
+    }
+
+    function renderMobileGroupFilter() {
+      var groups = loadMobileGroups();
+      var sel = document.getElementById('m-group-filter');
+      var names = Object.keys(groups);
+      if (names.length === 0) {
+        sel.style.display = 'none';
+        mobileGroupFilter = '';
+        return;
+      }
+      sel.style.display = '';
+      var prev = sel.value;
+      var html = '<option value="">All Agents</option>';
+      for (var i = 0; i < names.length; i++) {
+        html += '<option value="' + escapeHtml(names[i]) + '">' + escapeHtml(names[i]) + '</option>';
+      }
+      sel.innerHTML = html;
+      if (prev) sel.value = prev;
+      mobileGroupFilter = sel.value;
+    }
+
+    function isAgentInMobileFilter(agentId) {
+      if (!mobileGroupFilter) return true;
+      var groups = loadMobileGroups();
+      var ids = groups[mobileGroupFilter];
+      if (!ids) return true;
+      return ids.indexOf(agentId) !== -1;
+    }
 
     // ─── WebSocket ───
     function connect() {
@@ -481,6 +534,7 @@
       ws.onopen = function() {
         document.getElementById('conn-dot').classList.add('connected');
         document.getElementById('conn-label').textContent = 'Connected';
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       };
 
       ws.onmessage = function(e) {
@@ -495,7 +549,9 @@
     }
 
     function send(msg) {
-      if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+      if (ws && ws.readyState === 1) {
+        try { ws.send(JSON.stringify(msg)); } catch(e) {}
+      }
     }
 
     function handleMessage(msg) {
@@ -512,18 +568,18 @@
           updateTargetSelect();
           break;
         case 'output':
-          // Buffer output per agent (stripped of ANSI, last N lines)
+          // Buffer output per agent (stripped of ANSI and UI chrome, last N lines)
           var buf = agentOutputBuffers.get(msg.id) || [];
-          var cleaned = msg.data
-            .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
-            .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
-            .replace(/\x1B\[\?[0-9;]*[hl]/g, '')
-            .replace(/\x1B[^\[].?/g, '')
-            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-            .replace(/\r/g, '');
+          var cleaned = mobileStripOutput(msg.data);
           var newLines = cleaned.split('\n');
           for (var li = 0; li < newLines.length; li++) {
-            if (newLines[li].trim()) buf.push(newLines[li]);
+            var line = newLines[li];
+            if (line.trim()) {
+              // Dedup consecutive identical lines
+              if (buf.length === 0 || buf[buf.length - 1] !== line) {
+                buf.push(line);
+              }
+            }
           }
           if (buf.length > MAX_OUTPUT_LINES) buf.splice(0, buf.length - MAX_OUTPUT_LINES);
           agentOutputBuffers.set(msg.id, buf);
@@ -560,6 +616,12 @@
           break;
         case 'destroyed':
           agents.delete(msg.id);
+          agentOutputBuffers.delete(msg.id);
+          agentLastLines.delete(msg.id);
+          // If user is viewing this agent's chat, go back to the list
+          if (viewingAgentId === msg.id) {
+            closeAgentChat();
+          }
           renderAgents();
           renderQuestions();
           updateTargetSelect();
@@ -590,9 +652,13 @@
         return;
       }
       empty.style.display = 'none';
+      renderMobileGroupFilter();
 
       var html = '';
+      var visibleCount = 0;
       agents.forEach(function(agent) {
+        if (!isAgentInMobileFilter(agent.id)) return;
+        visibleCount++;
         var preview = agentLastLines.get(agent.id) || '';
         var elapsed = agent.startedAt ? formatElapsed(agent.startedAt) : '';
         html += '<div class="agent-card" data-id="' + agent.id + '">' +
@@ -743,7 +809,7 @@
       // Load buffered output
       var output = document.getElementById('chat-output');
       var buf = agentOutputBuffers.get(agentId) || [];
-      output.textContent = buf.join('\n');
+      output.innerHTML = formatOutputHtml(buf);
 
       // Scroll to bottom
       setTimeout(function() { output.scrollTop = output.scrollHeight; }, 50);
@@ -779,6 +845,127 @@
       tabs[0].classList.add('active');
     }
 
+    // Mobile-specific ANSI stripping + UI chrome filtering
+    function mobileStripOutput(str) {
+      var cleaned = str
+        // Strip ANSI escape sequences
+        .replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
+        .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
+        .replace(/\x1B\[\?[0-9;]*[hl]/g, '')
+        .replace(/\x1B[()][AB012]/g, '')
+        .replace(/\x1B[78DEHM=><]/g, '')
+        .replace(/\x1B\[[\d;]*m/g, '')
+        .replace(/\x1B\[\d*[ABCDJKST]/g, '')
+        .replace(/\x1B\[\d*;\d*[Hf]/g, '')
+        .replace(/\x1B\[\??\d+[hl]/g, '')
+        .replace(/\x1B\[[\d;]*r/g, '')
+        .replace(/\x1B[=>]/g, '')
+        .replace(/\x1B\[\d*X/g, '')
+        .replace(/\x1B\[\d*G/g, '')
+        .replace(/\x1B[^\[].?/g, '')
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+        .replace(/\r\n?/g, '\n')
+        .replace(/\r/g, '')
+        // Strip spinner characters
+        .replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏●○◐◑◒◓⣾⣽⣻⢿⡿⣟⣯⣷]/g, '')
+        // Strip box drawing
+        .replace(/[─│┌┐└┘├┤┬┴┼╭╮╰╯═║╔╗╚╝╠╣╦╩╬]/g, '');
+
+      // Filter lines
+      var lines = cleaned.split('\n');
+      var filtered = [];
+      var lastLine = '';
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var trimmed = line.trim();
+
+        // Skip empty/whitespace-only lines (collapse later)
+        if (!trimmed) {
+          if (filtered.length > 0 && filtered[filtered.length - 1] !== '') {
+            filtered.push('');
+          }
+          continue;
+        }
+
+        // Skip "Thinking..." indicators
+        if (/^thinking/i.test(trimmed)) continue;
+
+        // Skip lines starting with spinner/indicator characters
+        if (/^[⏺⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏●○◐◑◒◓]/.test(trimmed)) continue;
+
+        // Skip separator lines (just dashes, equals, underscores, tildes, stars)
+        if (/^[-=_~*]{3,}$/.test(trimmed)) continue;
+
+        // Skip Claude Code UI chrome
+        if (/^\?\s+(for\s+)?shortc/i.test(trimmed)) continue;
+        if (/^esc\s+to/i.test(trimmed)) continue;
+        if (/^costs?\s*:/i.test(trimmed)) continue;
+        if (/^model\s*:/i.test(trimmed)) continue;
+        if (/^context/i.test(trimmed) && trimmed.length < 30) continue;
+        if (/^compact\s*$/i.test(trimmed)) continue;
+        if (/^auto-?accept/i.test(trimmed)) continue;
+
+        // Skip bare prompt indicators
+        if (/^[❯►>]\s*$/.test(trimmed)) continue;
+
+        // Skip lines with no alphanumeric characters
+        if (/^[^a-zA-Z0-9]*$/.test(trimmed)) continue;
+
+        // Skip lines that are just whitespace or special characters
+        if (trimmed.length < 2) continue;
+
+        // Dedup consecutive identical lines
+        if (trimmed === lastLine) continue;
+        lastLine = trimmed;
+
+        filtered.push(line);
+      }
+
+      // Collapse multiple consecutive blank lines into one
+      var result = [];
+      for (var j = 0; j < filtered.length; j++) {
+        if (filtered[j] === '' && j > 0 && result[result.length - 1] === '') continue;
+        result.push(filtered[j]);
+      }
+
+      // Trim leading/trailing blanks
+      while (result.length > 0 && result[0] === '') result.shift();
+      while (result.length > 0 && result[result.length - 1] === '') result.pop();
+
+      return result.join('\n');
+    }
+
+    // Format buffered lines into styled HTML blocks
+    function formatOutputHtml(lines) {
+      if (!lines || lines.length === 0) return '';
+      var html = '';
+      var inCodeBlock = false;
+      var codeLines = [];
+
+      function flushCode() {
+        if (codeLines.length > 0) {
+          html += '<div class="code-block">' + escapeHtml(codeLines.join('\n')) + '</div>';
+          codeLines = [];
+        }
+        inCodeBlock = false;
+      }
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var isIndented = /^[\t]|^  /.test(line);
+
+        if (isIndented) {
+          inCodeBlock = true;
+          codeLines.push(line);
+        } else {
+          if (inCodeBlock) flushCode();
+          html += '<div class="output-block">' + escapeHtml(line) + '</div>';
+        }
+      }
+      if (inCodeBlock) flushCode();
+      return html;
+    }
+
     function appendChatOutput(text) {
       var output = document.getElementById('chat-output');
       if (!output) return;
@@ -786,7 +973,16 @@
       if (lines.length === 0) return;
 
       var wasAtBottom = (output.scrollHeight - output.scrollTop - output.clientHeight) < 50;
-      output.textContent += lines.join('\n') + '\n';
+
+      // Format and append
+      var newHtml = formatOutputHtml(lines);
+      output.innerHTML += newHtml;
+
+      // Cap the chat DOM to prevent unbounded growth
+      var blocks = output.children;
+      while (blocks.length > 500) {
+        output.removeChild(blocks[0]);
+      }
 
       // Auto-scroll if user was at the bottom
       if (wasAtBottom) {
@@ -836,6 +1032,12 @@
       if (e.key === 'Enter') {
         document.getElementById('btn-chat-send').click();
       }
+    });
+
+    // ─── Group Filter ───
+    document.getElementById('m-group-filter').addEventListener('change', function() {
+      mobileGroupFilter = this.value;
+      renderAgents();
     });
 
     // ─── Init ───

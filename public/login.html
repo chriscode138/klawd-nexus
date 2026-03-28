@@ -97,6 +97,7 @@
     function login() {
       var pin = document.getElementById('pin').value;
       if (!pin) return;
+      var errEl = document.getElementById('error');
       fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -105,13 +106,17 @@
       .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
       .then(function(res) {
         if (res.ok) {
-          // Redirect to mobile view
           window.location.href = '/mobile.html';
         } else {
-          document.getElementById('error').style.display = '';
+          errEl.textContent = (res.data && res.data.error) || 'Incorrect PIN';
+          errEl.style.display = '';
           document.getElementById('pin').value = '';
           document.getElementById('pin').focus();
         }
+      })
+      .catch(function() {
+        errEl.textContent = 'Connection error. Please try again.';
+        errEl.style.display = '';
       });
     }
   </script>

@@ -108,6 +108,7 @@
               <span>Agents</span>
               <span id="agent-count" class="count-label">0</span>
             </div>
+            <div id="group-tabs" class="group-tabs" style="display:none;"></div>
             <div id="agent-list" class="sidebar-list"></div>
           </div>
 
@@ -546,6 +547,12 @@
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 7l4 4L13 3"/></svg>
       <span>Enable Auto-Reply</span>
     </div>
+    <div class="context-menu-item context-menu-submenu" data-action="group">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 3h12M1 7h12M1 11h12"/></svg>
+      <span>Group</span>
+      <svg class="submenu-arrow" width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 1l3 3-3 3"/></svg>
+    </div>
+    <div class="context-menu-groups hidden" id="context-menu-groups"></div>
     <div class="context-menu-item context-menu-submenu" data-action="color">
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5"/></svg>
       <span>Color Label</span>
@@ -600,11 +607,12 @@
       <div class="shortcut-grid">
         <div class="shortcut-group">
           <div class="shortcut-group-title">Agents</div>
-          <div class="shortcut-row"><kbd>&#8984;N</kbd><span>New Agent</span></div>
+          <div class="shortcut-row"><kbd>&#8984;N</kbd> / <kbd>&#8984;T</kbd><span>New Agent</span></div>
           <div class="shortcut-row"><kbd>&#8984;1</kbd> - <kbd>&#8984;9</kbd><span>Switch to Agent</span></div>
           <div class="shortcut-row"><kbd>&#8984;&#8679;]</kbd><span>Next Agent</span></div>
           <div class="shortcut-row"><kbd>&#8984;&#8679;[</kbd><span>Previous Agent</span></div>
           <div class="shortcut-row"><kbd>&#8984;W</kbd><span>Close Agent</span></div>
+          <div class="shortcut-row"><kbd>&#8984;A</kbd><span>Select All Agents</span></div>
         </div>
         <div class="shortcut-group">
           <div class="shortcut-group-title">Questions</div>

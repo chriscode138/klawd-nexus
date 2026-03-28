@@ -54,7 +54,6 @@ A desktop command center for managing multiple Claude Code terminal sessions sim
 - Native Electron wrapper with custom icon
 - macOS traffic light integration
 - No browser chrome, dedicated dock icon
-- System tray support
 
 ## Install (One Command)
 
@@ -114,6 +113,7 @@ PORT=4000 npm start
 | Cmd+Shift+F | Focus / zen mode |
 | Cmd+M | Mute / unmute sounds |
 | Cmd+W | Close current agent |
+| Cmd+A | Select all agents (for batch commands) |
 | ? | Keyboard shortcut cheat sheet |
 | Up / Down | Command history in input |
 | Shift+Enter | New line in input |
