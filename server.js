@@ -304,9 +304,21 @@ function createSession(name, cwd, command) {
   const shell = isWin
     ? process.env.COMSPEC || 'cmd.exe'
     : process.env.SHELL || '/bin/zsh';
-  // Security: Only allow known safe commands to prevent injection
-  const ALLOWED_COMMANDS = ['claude', 'claude-code'];
-  const cmd = (command && ALLOWED_COMMANDS.includes(command)) ? command : 'claude';
+  // Security: Only allow known safe commands to prevent injection.
+  // Commands can include flags (e.g., "claude --resume"), so we validate the
+  // base command and only allow known-safe flags.
+  const ALLOWED_BASE_COMMANDS = ['claude', 'claude-code'];
+  const ALLOWED_FLAGS = ['--resume', '--dangerously-skip-permissions'];
+  let cmd = 'claude';
+  if (command && typeof command === 'string') {
+    const parts = command.trim().split(/\s+/);
+    const baseCmd = parts[0];
+    if (ALLOWED_BASE_COMMANDS.includes(baseCmd)) {
+      const flags = parts.slice(1);
+      const safeFlags = flags.filter(f => ALLOWED_FLAGS.includes(f));
+      cmd = [baseCmd, ...safeFlags].join(' ');
+    }
+  }
 
   let ptyProcess;
   try {
@@ -817,6 +829,10 @@ app.post('/api/mcp-servers', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/api/mcp-file-path', (req, res) => {
+  res.json({ path: MCP_CONFIG_PATH });
 });
 
 app.delete('/api/mcp-servers/:name', (req, res) => {

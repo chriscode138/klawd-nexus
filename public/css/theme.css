@@ -4606,3 +4606,311 @@ body.focus-mode #status-bar {
   color: var(--color-accent-bright);
   flex-shrink: 0;
 }
+
+/* ===============================================================
+   Feature: Multi-Pane Terminal View
+   =============================================================== */
+
+.multi-pane-active {
+  position: relative;
+}
+
+.multi-pane-active #empty-state {
+  display: none !important;
+}
+
+.multi-pane-active > .terminal-instance {
+  display: none !important;
+}
+
+.multi-pane-active > #floating-input {
+  z-index: 20;
+}
+
+.multi-pane-grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  gap: 2px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--color-border);
+}
+
+.multi-pane-grid[data-layout="side-by-side"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+.multi-pane-grid[data-layout="stacked"] {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.multi-pane-grid[data-layout="quad"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.multi-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  overflow: hidden;
+  position: relative;
+  border: 2px solid transparent;
+  transition: border-color var(--transition-fast);
+}
+
+.multi-pane.pane-focused {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent-dim);
+}
+
+.multi-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  min-height: 28px;
+}
+
+.pane-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pane-status-dot.status-active {
+  background: var(--color-success);
+  box-shadow: 0 0 4px var(--color-success-glow);
+}
+
+.pane-status-dot.status-waiting {
+  background: var(--color-warning);
+  box-shadow: 0 0 4px var(--color-warning-glow);
+}
+
+.pane-status-dot.status-exited {
+  background: var(--color-text-tertiary);
+  opacity: 0.5;
+}
+
+.pane-agent-name {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pane-close-btn {
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+}
+
+.multi-pane:hover .pane-close-btn {
+  opacity: 0.7;
+}
+
+.pane-close-btn:hover {
+  opacity: 1 !important;
+  color: var(--color-danger);
+  background: var(--color-danger-dim);
+}
+
+.multi-pane-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.multi-pane-body .terminal-instance {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block !important;
+}
+
+.terminal-instance.in-pane {
+  position: absolute !important;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Layout picker dropdown */
+.layout-picker-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 200;
+  min-width: 160px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 4px 0;
+  margin-top: 4px;
+  animation: modalIn 150ms var(--ease-out-expo);
+}
+
+.layout-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.layout-picker-item:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.layout-picker-item.active {
+  background: var(--color-accent-dim);
+  color: var(--color-accent-bright);
+}
+
+.layout-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+/* ===============================================================
+   Feature: Command Preset Dropdown
+   =============================================================== */
+
+.command-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.command-preset-select {
+  flex: 1;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: var(--font-mono);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%238b8ba3' stroke-width='1.5'%3E%3Cpath d='M3 5l3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.command-preset-select:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-dim);
+}
+
+.command-preset-select option {
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 8px;
+}
+
+#btn-set-preferred-cmd {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+#btn-set-preferred-cmd:hover {
+  color: var(--color-warning);
+}
+
+/* ===============================================================
+   Feature: MCP Manager Improvements
+   =============================================================== */
+
+.mcp-args-list {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  padding: 2px 0;
+  word-break: break-all;
+}
+
+.mcp-args-label {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.mcp-args-value {
+  color: var(--color-text-tertiary);
+}
+
+.mcp-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#btn-mcp-edit-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-accent-bright);
+}
+
+#btn-mcp-edit-source:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-dim);
+}
+
+/* ===============================================================
+   Feature: Quick Deploy Button
+   =============================================================== */
+
+#btn-quick-deploy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-accent-bright);
+  border: 1px solid rgba(124, 108, 240, 0.2);
+  -webkit-app-region: no-drag;
+}
+
+#btn-quick-deploy:hover {
+  background: var(--color-accent-dim);
+  border-color: rgba(124, 108, 240, 0.35);
+}

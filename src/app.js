@@ -242,6 +242,17 @@ let autoSaveInterval = null;
 // Cycle 6: Agent progress/cost tracker
 let elapsedTimerInterval = null;
 
+// Feature: Multi-Pane Terminal View
+let multiPaneMode = false; // false = single pane (default), true = multi-pane
+let multiPaneLayout = 'single'; // 'single' | 'side-by-side' | 'stacked' | 'quad'
+let multiPaneAgents = []; // Array of agent IDs shown in panes
+let focusedPaneAgentId = null; // Which pane is focused (for input routing)
+let layoutPickerVisible = false;
+
+// Feature: Agent Creation - Quick Deploy counter & preferred command
+const PREFERRED_CMD_KEY = 'klawd-nexus-preferred-command';
+let quickDeployCounter = 0;
+
 // File split preview state
 let fileSplitVisible = false;
 let fileSplitHeight = 240;
@@ -943,6 +954,13 @@ function onAgentCreated(msg) {
   // Remove loading placeholder
   removePendingPlaceholder();
 
+  // Update quick deploy counter if this agent matches the pattern
+  const qdMatch = name.match(/^Agent \((\d+)\)$/);
+  if (qdMatch) {
+    const n = parseInt(qdMatch[1], 10);
+    if (n >= quickDeployCounter) quickDeployCounter = n;
+  }
+
   // Auto-switch to the newly created agent
   switchToAgent(id);
   renderSidebar();
@@ -1112,6 +1130,26 @@ function onAgentExited(msg) {
 function onAgentDestroyed(msg) {
   const agent = agents.get(msg.id);
   if (!agent) return;
+
+  // Remove from multi-pane if active
+  if (multiPaneMode && multiPaneAgents.includes(msg.id)) {
+    // Move container back before disposing
+    const termContainer = $('#terminal-container');
+    if (agent.container.parentElement !== termContainer) {
+      termContainer.appendChild(agent.container);
+    }
+    agent.container.classList.remove('in-pane');
+    multiPaneAgents = multiPaneAgents.filter(id => id !== msg.id);
+    if (focusedPaneAgentId === msg.id) {
+      focusedPaneAgentId = multiPaneAgents[0] || null;
+    }
+    if (multiPaneAgents.length < 2) {
+      // Will exit after agent is fully removed
+      setTimeout(() => exitMultiPaneMode(), 0);
+    } else {
+      setTimeout(() => renderMultiPane(), 0);
+    }
+  }
 
   agent.terminal.dispose();
   agent.container.remove();
@@ -1706,13 +1744,24 @@ function handleAgentClick(agentId, e) {
   const isMeta = e.metaKey || e.ctrlKey;
 
   if (isMeta) {
-    // Toggle multi-select for this agent
+    // If we are already viewing an agent (single or multi-pane), Cmd+click adds to multi-pane
+    if (activeAgentId && activeAgentId !== agentId) {
+      if (multiPaneMode) {
+        // Add this agent to existing multi-pane
+        addPaneAgent(agentId);
+      } else {
+        // Start multi-pane with current + clicked agent
+        enterMultiPaneMode([activeAgentId, agentId]);
+      }
+      return;
+    }
+
+    // Toggle multi-select for this agent (original behavior for other cases)
     if (multiSelectedAgentIds.has(agentId)) {
       multiSelectedAgentIds.delete(agentId);
     } else {
       multiSelectedAgentIds.add(agentId);
     }
-    // If only one remains and it's the current active, clear multi-select
     if (multiSelectedAgentIds.size === 0) {
       isMultiSelectMode = false;
     } else {
@@ -1723,7 +1772,10 @@ function handleAgentClick(agentId, e) {
     return;
   }
 
-  // Normal click: clear multi-select, switch to agent
+  // Normal click: exit multi-pane if active, clear multi-select, switch to agent
+  if (multiPaneMode) {
+    exitMultiPaneMode();
+  }
   if (isMultiSelectMode) {
     multiSelectedAgentIds.clear();
     isMultiSelectMode = false;
@@ -2758,7 +2810,28 @@ function openModal() {
   $('#modal-overlay').classList.remove('hidden');
   $('#agent-name').value = '';
   $('#agent-cwd').value = os_homedir();
-  $('#agent-command').value = 'claude';
+
+  // Set command from preset dropdown
+  const cmdPreset = $('#agent-command-preset');
+  const cmdInput = $('#agent-command');
+  const preferred = getPreferredCommand();
+  if (cmdPreset) {
+    // Check if preferred matches a preset option
+    const presetValues = Array.from(cmdPreset.options).map(o => o.value);
+    if (presetValues.includes(preferred)) {
+      cmdPreset.value = preferred;
+      if (cmdInput) cmdInput.style.display = 'none';
+    } else {
+      cmdPreset.value = 'custom';
+      if (cmdInput) {
+        cmdInput.style.display = '';
+        cmdInput.value = preferred;
+      }
+    }
+  } else if (cmdInput) {
+    cmdInput.value = preferred;
+  }
+
   $('#folder-browser').classList.add('hidden');
 
   // Preemptive UX: Reset startup prompt section
@@ -2784,7 +2857,20 @@ function closeModal() {
 function handleCreateAgent() {
   const name = $('#agent-name').value.trim();
   const cwd = $('#agent-cwd').value.trim();
-  const command = $('#agent-command').value.trim() || 'claude';
+
+  // Read command from preset dropdown or custom input
+  let command = 'claude';
+  const cmdPreset = $('#agent-command-preset');
+  const cmdInput = $('#agent-command');
+  if (cmdPreset) {
+    if (cmdPreset.value === 'custom') {
+      command = cmdInput ? cmdInput.value.trim() || 'claude' : 'claude';
+    } else {
+      command = cmdPreset.value;
+    }
+  } else if (cmdInput) {
+    command = cmdInput.value.trim() || 'claude';
+  }
 
   let valid = true;
   if (!name) {
@@ -2925,6 +3011,10 @@ function browseFolders(dirPath) {
 // ═══════════════════════════════════════════
 
 function refitActiveTerminal() {
+  if (multiPaneMode) {
+    requestAnimationFrame(() => refitAllPaneTerminals());
+    return;
+  }
   if (!activeAgentId) return;
   const agent = agents.get(activeAgentId);
   if (!agent) return;
@@ -2939,7 +3029,9 @@ function refitActiveTerminal() {
 let resizeTimeout;
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimeout);
-  resizeTimeout = setTimeout(refitActiveTerminal, 50);
+  resizeTimeout = setTimeout(() => {
+    refitActiveTerminal();
+  }, 50);
 });
 
 // ═══════════════════════════════════════════
@@ -3115,6 +3207,27 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
+  // Cmd+D: Quick Deploy
+  if (isMeta && e.key === 'd') {
+    e.preventDefault();
+    quickDeploy();
+    return;
+  }
+
+  // Cmd+\: Toggle split with current agent + next agent
+  if (isMeta && e.key === '\\') {
+    e.preventDefault();
+    if (multiPaneMode) {
+      exitMultiPaneMode();
+    } else if (activeAgentId && agents.size >= 2) {
+      const sorted = getSortedAgents();
+      const currentIdx = sorted.findIndex(a => a.id === activeAgentId);
+      const nextIdx = (currentIdx + 1) % sorted.length;
+      enterMultiPaneMode([activeAgentId, sorted[nextIdx].id]);
+    }
+    return;
+  }
+
   // Cmd+N or Cmd+T: New agent
   if (isMeta && (e.key === 'n' || e.key === 't')) {
     e.preventDefault();
@@ -3186,11 +3299,21 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  // Escape: Close focus mode, cross-search, command palette, shortcut overlay, context menu, workspace dropdown, confirm dialog, search bar, then modal, then multi-select
+  // Escape: Close focus mode, multi-pane, cross-search, command palette, shortcut overlay, context menu, workspace dropdown, confirm dialog, search bar, then modal, then multi-select
   if (e.key === 'Escape') {
     // Exit focus mode first
     if (focusModeActive) {
       toggleFocusMode();
+      return;
+    }
+    // Exit multi-pane mode
+    if (multiPaneMode) {
+      exitMultiPaneMode();
+      return;
+    }
+    // Close layout picker
+    if (layoutPickerVisible) {
+      closeLayoutPicker();
       return;
     }
     // Close cross-agent search first
@@ -4254,6 +4377,21 @@ function getPaletteItems() {
   items.push({ id: 'action-save-ws', type: 'action', label: 'Save Workspace', detail: 'Save current agents as a preset', icon: '\u{1F4BE}', action: () => { saveWorkspace(); } });
   items.push({ id: 'action-load-ws', type: 'action', label: 'Load Workspace', detail: 'Load a saved workspace preset', icon: '\u{1F4C1}', action: () => { loadWorkspaceMenu(); } });
 
+  // Quick Deploy
+  items.push({ id: 'action-quick-deploy', type: 'action', label: 'Quick Deploy Agent', detail: 'Instantly create an agent with preferred command', icon: '\u{26A1}', action: () => { quickDeploy(); } });
+
+  // Multi-pane toggle
+  if (agents.size >= 2) {
+    items.push({ id: 'action-split-toggle', type: 'action', label: multiPaneMode ? 'Exit Split View' : 'Split View', detail: 'View multiple agent terminals side by side', icon: '\u25EB', action: () => {
+      if (multiPaneMode) { exitMultiPaneMode(); } else if (activeAgentId) {
+        const sorted = getSortedAgents();
+        const idx = sorted.findIndex(a => a.id === activeAgentId);
+        const nextIdx = (idx + 1) % sorted.length;
+        enterMultiPaneMode([activeAgentId, sorted[nextIdx].id]);
+      }
+    }});
+  }
+
   // Cycle 5: Cross-agent search
   items.push({ id: 'action-search-all', type: 'action', label: 'Search All Agents', detail: 'Search across all agent terminals', icon: '\u{1F50D}', action: () => { openCrossAgentSearch(); } });
 
@@ -4594,6 +4732,355 @@ function initScrollTracking() {
 }
 
 // ═══════════════════════════════════════════
+// Feature: Multi-Pane Terminal View
+// ═══════════════════════════════════════════
+
+function enterMultiPaneMode(agentIds) {
+  if (!agentIds || agentIds.length < 2) return;
+  multiPaneMode = true;
+  multiPaneAgents = agentIds.slice(0, 4); // max 4 panes
+  focusedPaneAgentId = multiPaneAgents[0];
+
+  // Determine layout based on count
+  if (multiPaneAgents.length === 2) {
+    multiPaneLayout = 'side-by-side';
+  } else if (multiPaneAgents.length >= 3) {
+    multiPaneLayout = 'quad';
+  }
+
+  renderMultiPane();
+}
+
+function exitMultiPaneMode() {
+  multiPaneMode = false;
+  const lastFocused = focusedPaneAgentId || activeAgentId;
+  multiPaneAgents = [];
+  focusedPaneAgentId = null;
+  multiPaneLayout = 'single';
+
+  // Remove the multi-pane grid
+  const grid = $('#multi-pane-grid');
+  if (grid) grid.remove();
+
+  // Show the layout picker as hidden
+  const layoutBtn = $('#btn-layout-picker');
+  if (layoutBtn) layoutBtn.classList.add('hidden');
+
+  // Restore single-pane: show active agent container directly
+  const container = $('#terminal-container');
+  if (container) container.classList.remove('multi-pane-active');
+
+  // Re-show agent containers in normal mode
+  for (const a of agents.values()) {
+    a.container.style.display = 'none';
+    a.container.classList.remove('in-pane');
+    // If the container was moved into a pane wrapper, move it back
+    const termContainer = $('#terminal-container');
+    if (a.container.parentElement !== termContainer) {
+      termContainer.appendChild(a.container);
+    }
+  }
+
+  // Switch to the last focused agent
+  if (lastFocused && agents.has(lastFocused)) {
+    switchToAgent(lastFocused);
+  } else if (agents.size > 0) {
+    switchToAgent(Array.from(agents.keys())[0]);
+  }
+}
+
+function renderMultiPane() {
+  const container = $('#terminal-container');
+  if (!container) return;
+
+  container.classList.add('multi-pane-active');
+
+  // Show layout picker button
+  const layoutBtn = $('#btn-layout-picker');
+  if (layoutBtn) layoutBtn.classList.remove('hidden');
+
+  // Hide single-pane elements
+  const emptyState = $('#empty-state');
+  if (emptyState) emptyState.style.display = 'none';
+
+  // Remove old grid if present
+  const oldGrid = $('#multi-pane-grid');
+  if (oldGrid) oldGrid.remove();
+
+  // Create the grid
+  const grid = document.createElement('div');
+  grid.id = 'multi-pane-grid';
+  grid.className = 'multi-pane-grid';
+  grid.dataset.layout = multiPaneLayout;
+
+  // Hide all terminal instances first
+  for (const a of agents.values()) {
+    a.container.style.display = 'none';
+  }
+
+  for (const agentId of multiPaneAgents) {
+    const agent = agents.get(agentId);
+    if (!agent) continue;
+
+    const pane = document.createElement('div');
+    pane.className = 'multi-pane';
+    if (agentId === focusedPaneAgentId) pane.classList.add('pane-focused');
+    pane.dataset.agentId = agentId;
+
+    // Pane header
+    const header = document.createElement('div');
+    header.className = 'multi-pane-header';
+    const statusDot = document.createElement('span');
+    statusDot.className = `pane-status-dot status-${agent.status}`;
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'pane-agent-name';
+    nameSpan.textContent = agent.name;
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'pane-close-btn';
+    closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="2" y1="2" x2="8" y2="8"/><line x1="8" y1="2" x2="2" y2="8"/></svg>';
+    closeBtn.title = 'Remove from split';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removePaneAgent(agentId);
+    });
+
+    header.appendChild(statusDot);
+    header.appendChild(nameSpan);
+    header.appendChild(closeBtn);
+    pane.appendChild(header);
+
+    // Terminal body
+    const body = document.createElement('div');
+    body.className = 'multi-pane-body';
+    agent.container.style.display = 'block';
+    agent.container.classList.add('in-pane');
+    body.appendChild(agent.container);
+    pane.appendChild(body);
+
+    // Focus handling
+    pane.addEventListener('click', () => {
+      setFocusedPane(agentId);
+    });
+
+    grid.appendChild(pane);
+  }
+
+  container.appendChild(grid);
+
+  // Fit all pane terminals after layout
+  requestAnimationFrame(() => {
+    for (const agentId of multiPaneAgents) {
+      const agent = agents.get(agentId);
+      if (agent) {
+        try {
+          agent.fitAddon.fit();
+          send({ type: 'resize', id: agentId, cols: agent.terminal.cols, rows: agent.terminal.rows });
+        } catch {}
+      }
+    }
+  });
+
+  // Update floating input to target focused pane
+  if (focusedPaneAgentId) {
+    activeAgentId = focusedPaneAgentId;
+    const agent = agents.get(focusedPaneAgentId);
+    if (agent) {
+      showFloatingInput(agent);
+      updateTerminalHeader(agent);
+    }
+  }
+}
+
+function setFocusedPane(agentId) {
+  focusedPaneAgentId = agentId;
+  activeAgentId = agentId;
+
+  // Update visual focus
+  const panes = $$('.multi-pane');
+  for (const p of panes) {
+    p.classList.toggle('pane-focused', p.dataset.agentId === agentId);
+  }
+
+  // Update floating input and terminal header
+  const agent = agents.get(agentId);
+  if (agent) {
+    agent.hasUnread = false;
+    showFloatingInput(agent);
+    updateTerminalHeader(agent);
+    agent.terminal.focus();
+  }
+
+  renderSidebar();
+}
+
+function removePaneAgent(agentId) {
+  multiPaneAgents = multiPaneAgents.filter(id => id !== agentId);
+
+  // Move the agent container back to terminal-container
+  const agent = agents.get(agentId);
+  if (agent) {
+    agent.container.style.display = 'none';
+    agent.container.classList.remove('in-pane');
+    const termContainer = $('#terminal-container');
+    if (agent.container.parentElement !== termContainer) {
+      termContainer.appendChild(agent.container);
+    }
+  }
+
+  if (multiPaneAgents.length < 2) {
+    exitMultiPaneMode();
+    return;
+  }
+
+  // Fix focused pane
+  if (focusedPaneAgentId === agentId) {
+    focusedPaneAgentId = multiPaneAgents[0];
+  }
+
+  renderMultiPane();
+}
+
+function addPaneAgent(agentId) {
+  if (multiPaneAgents.includes(agentId)) return;
+  if (multiPaneAgents.length >= 4) {
+    showToast('Maximum 4 panes in split view', 'info');
+    return;
+  }
+  multiPaneAgents.push(agentId);
+
+  // Auto-adjust layout
+  if (multiPaneAgents.length === 2) {
+    if (multiPaneLayout === 'single') multiPaneLayout = 'side-by-side';
+  } else if (multiPaneAgents.length >= 3) {
+    multiPaneLayout = 'quad';
+  }
+
+  renderMultiPane();
+}
+
+function setMultiPaneLayout(layout) {
+  multiPaneLayout = layout;
+  closeLayoutPicker();
+
+  if (layout === 'single') {
+    exitMultiPaneMode();
+    return;
+  }
+
+  if (!multiPaneMode) {
+    // Start multi-pane with current agent + next agent
+    const sorted = getSortedAgents();
+    const currentIdx = sorted.findIndex(a => a.id === activeAgentId);
+    const agentIds = [activeAgentId];
+    const maxPanes = layout === 'quad' ? 4 : 2;
+    for (let i = 1; i < sorted.length && agentIds.length < maxPanes; i++) {
+      const idx = (currentIdx + i) % sorted.length;
+      agentIds.push(sorted[idx].id);
+    }
+    if (agentIds.length < 2) {
+      showToast('Need at least 2 agents for split view', 'info');
+      return;
+    }
+    enterMultiPaneMode(agentIds);
+  } else {
+    renderMultiPane();
+  }
+
+  showToast(`Layout: ${layout.replace(/-/g, ' ')}`, 'info');
+}
+
+function toggleLayoutPicker() {
+  if (layoutPickerVisible) {
+    closeLayoutPicker();
+  } else {
+    openLayoutPicker();
+  }
+}
+
+function openLayoutPicker() {
+  closeLayoutPicker();
+  layoutPickerVisible = true;
+
+  const btn = $('#btn-layout-picker');
+  if (!btn) return;
+
+  const dropdown = document.createElement('div');
+  dropdown.id = 'layout-picker-dropdown';
+  dropdown.className = 'layout-picker-dropdown';
+
+  const layouts = [
+    { id: 'single', label: 'Single', icon: '\u25A0' },
+    { id: 'side-by-side', label: 'Side by Side', icon: '\u25EB' },
+    { id: 'stacked', label: 'Stacked', icon: '\u2261' },
+    { id: 'quad', label: 'Quad', icon: '\u2637' },
+  ];
+
+  for (const l of layouts) {
+    const item = document.createElement('div');
+    item.className = 'layout-picker-item';
+    if (multiPaneLayout === l.id) item.classList.add('active');
+    item.innerHTML = `<span class="layout-icon">${l.icon}</span> ${l.label}`;
+    item.addEventListener('click', () => setMultiPaneLayout(l.id));
+    dropdown.appendChild(item);
+  }
+
+  btn.style.position = 'relative';
+  btn.appendChild(dropdown);
+
+  const closeHandler = (e) => {
+    if (!dropdown.contains(e.target) && e.target !== btn) {
+      closeLayoutPicker();
+      document.removeEventListener('click', closeHandler);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closeHandler), 0);
+}
+
+function closeLayoutPicker() {
+  layoutPickerVisible = false;
+  const dropdown = $('#layout-picker-dropdown');
+  if (dropdown) dropdown.remove();
+}
+
+function refitAllPaneTerminals() {
+  if (!multiPaneMode) return;
+  for (const agentId of multiPaneAgents) {
+    const agent = agents.get(agentId);
+    if (agent) {
+      try {
+        agent.fitAddon.fit();
+        send({ type: 'resize', id: agentId, cols: agent.terminal.cols, rows: agent.terminal.rows });
+      } catch {}
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+// Feature: Quick Deploy
+// ═══════════════════════════════════════════
+
+function getPreferredCommand() {
+  return localStorage.getItem(PREFERRED_CMD_KEY) || 'claude';
+}
+
+function setPreferredCommand(cmd) {
+  localStorage.setItem(PREFERRED_CMD_KEY, cmd);
+  showToast(`Preferred command set: ${cmd}`, 'success');
+}
+
+function quickDeploy() {
+  quickDeployCounter++;
+  const name = `Agent (${quickDeployCounter})`;
+  const cwd = os_homedir() || '/';
+  const command = getPreferredCommand();
+
+  showPendingPlaceholder(name, cwd);
+  send({ type: 'create', name, cwd, command });
+  showToast(`Quick deploy: ${name}`, 'success');
+  addActivity('\u25B6', `Quick deployed "${name}"`, 'success');
+}
+
+// ═══════════════════════════════════════════
 // Initialization
 // ═══════════════════════════════════════════
 
@@ -4694,6 +5181,49 @@ function init() {
     });
   }
 
+  // Quick Deploy button
+  const quickDeployBtn = $('#btn-quick-deploy');
+  if (quickDeployBtn) quickDeployBtn.addEventListener('click', quickDeploy);
+
+  // Layout picker button
+  const layoutBtn = $('#btn-layout-picker');
+  if (layoutBtn) layoutBtn.addEventListener('click', toggleLayoutPicker);
+
+  // Command preset dropdown in modal
+  const cmdPreset = $('#agent-command-preset');
+  const cmdInput = $('#agent-command');
+  if (cmdPreset) {
+    cmdPreset.addEventListener('change', () => {
+      if (cmdPreset.value === 'custom') {
+        if (cmdInput) {
+          cmdInput.style.display = '';
+          cmdInput.value = '';
+          cmdInput.focus();
+        }
+      } else {
+        if (cmdInput) cmdInput.style.display = 'none';
+      }
+    });
+  }
+
+  // Set preferred command star button
+  const starBtn = $('#btn-set-preferred-cmd');
+  if (starBtn) {
+    starBtn.addEventListener('click', () => {
+      let cmd = 'claude';
+      const preset = $('#agent-command-preset');
+      if (preset) {
+        if (preset.value === 'custom') {
+          const inp = $('#agent-command');
+          cmd = inp ? inp.value.trim() || 'claude' : 'claude';
+        } else {
+          cmd = preset.value;
+        }
+      }
+      setPreferredCommand(cmd);
+    });
+  }
+
   // New agent buttons
   $('#btn-new-agent').addEventListener('click', openModal);
   const emptyCreate = $('#btn-empty-create');
@@ -4750,6 +5280,28 @@ function init() {
         closeAgentSwitcher();
       } else {
         openAgentSwitcher();
+      }
+    });
+  }
+
+  // Multi-pane: Allow dropping agents from sidebar into terminal area
+  const terminalArea = document.getElementById('terminal-area');
+  if (terminalArea) {
+    terminalArea.addEventListener('dragover', (e) => {
+      // Only allow if dragging an agent (text/plain contains agent-*)
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    terminalArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const agentId = e.dataTransfer.getData('text/plain');
+      if (!agentId || !agentId.startsWith('agent-')) return;
+      if (!agents.has(agentId)) return;
+
+      if (multiPaneMode) {
+        addPaneAgent(agentId);
+      } else if (activeAgentId && activeAgentId !== agentId) {
+        enterMultiPaneMode([activeAgentId, agentId]);
       }
     });
   }
@@ -5420,6 +5972,7 @@ function getServerDetail(config) {
     return config.url || 'No URL configured';
   }
   const cmd = config.command || '';
+  // Show the full args array, never truncate
   const args = Array.isArray(config.args) ? config.args.join(' ') : '';
   return args ? `${cmd} ${args}` : cmd;
 }
@@ -5460,7 +6013,13 @@ function renderMcpServers(servers) {
     const badgeClass = type === 'stdio' ? 'mcp-badge-stdio' : 'mcp-badge-http';
     const badgeLabel = type === 'stdio' ? 'stdio' : 'http';
 
-    // Env vars section
+    // Args section (show full array)
+    let argsHtml = '';
+    if (Array.isArray(config.args) && config.args.length > 0) {
+      argsHtml = `<div class="mcp-args-list"><span class="mcp-args-label">args:</span> <span class="mcp-args-value">${escapeHtml(JSON.stringify(config.args))}</span></div>`;
+    }
+
+    // Env vars section: show full key names, only mask values
     let envHtml = '';
     if (config.env && Object.keys(config.env).length > 0) {
       const envEntries = Object.entries(config.env);
@@ -5492,6 +6051,7 @@ function renderMcpServers(servers) {
         </button>
       </div>
       <div class="mcp-server-detail" title="${escapeAttr(detail)}">${escapeHtml(detail)}</div>
+      ${argsHtml}
       ${envHtml}
     </div>`;
   }).join('');
@@ -5531,11 +6091,13 @@ async function addMcpServer() {
   const nameInput = $('#mcp-server-name');
   const name = nameInput ? nameInput.value.trim() : '';
 
+  // Validation: name is required
   if (!name) {
     if (nameInput) {
       nameInput.classList.add('shake');
       setTimeout(() => nameInput.classList.remove('shake'), 400);
     }
+    showToast('Server name is required', 'error');
     return;
   }
 
@@ -5547,11 +6109,13 @@ async function addMcpServer() {
   if (type === 'http') {
     const urlInput = $('#mcp-url');
     const url = urlInput ? urlInput.value.trim() : '';
+    // Validation: URL is required for HTTP type
     if (!url) {
       if (urlInput) {
         urlInput.classList.add('shake');
         setTimeout(() => urlInput.classList.remove('shake'), 400);
       }
+      showToast('URL is required for HTTP transport', 'error');
       return;
     }
     config = { transport: 'http', url };
@@ -5560,11 +6124,13 @@ async function addMcpServer() {
     const argsInput = $('#mcp-args');
     const envInput = $('#mcp-env');
     const command = cmdInput ? cmdInput.value.trim() : '';
+    // Validation: command is required for stdio type
     if (!command) {
       if (cmdInput) {
         cmdInput.classList.add('shake');
         setTimeout(() => cmdInput.classList.remove('shake'), 400);
       }
+      showToast('Command is required for stdio transport', 'error');
       return;
     }
 
@@ -5631,6 +6197,22 @@ function resetMcpAddForm() {
   if (httpFields) httpFields.classList.add('hidden');
 }
 
+async function openMcpSourceFile() {
+  try {
+    const res = await fetch('/api/mcp-file-path');
+    if (!res.ok) throw new Error('Failed to get file path');
+    const data = await res.json();
+    if (data.path) {
+      // Close the MCP manager modal
+      closeMcpManager();
+      // Open the file in the file split preview
+      send({ type: 'readFile', path: data.path });
+    }
+  } catch (err) {
+    showToast('Failed to open MCP config file', 'error');
+  }
+}
+
 function initMcpManager() {
   // Open button in titlebar
   const mcpBtn = $('#btn-mcp-manager');
@@ -5672,6 +6254,10 @@ function initMcpManager() {
   // Add server
   const addBtn = $('#btn-mcp-add');
   if (addBtn) addBtn.addEventListener('click', addMcpServer);
+
+  // Edit Source File button
+  const editSourceBtn = $('#btn-mcp-edit-source');
+  if (editSourceBtn) editSourceBtn.addEventListener('click', openMcpSourceFile);
 
   // Type toggle
   for (const btn of document.querySelectorAll('.mcp-type-btn')) {

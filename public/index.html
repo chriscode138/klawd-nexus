@@ -68,6 +68,12 @@
             <circle cx="8" cy="8" r="2"/>
           </svg>
         </button>
+        <button id="btn-quick-deploy" class="btn btn-ghost btn-small" title="Quick Deploy (&#8984;D)">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M7 1v12M3 5l4-4 4 4"/>
+          </svg>
+          Quick Deploy
+        </button>
         <kbd class="shortcut-hint" title="Press ? for all shortcuts">&#8984;N</kbd>
         <button id="btn-new-agent" class="btn btn-primary">
           <span class="btn-icon">+</span>
@@ -153,6 +159,12 @@
             <span id="terminal-session-timer" class="terminal-timer hidden"></span>
           </div>
           <div class="terminal-actions">
+            <button id="btn-layout-picker" class="btn btn-icon-only hidden" title="Layout (split view)">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="1" y="2" width="14" height="12" rx="1"/>
+                <line x1="8" y1="2" x2="8" y2="14"/>
+              </svg>
+            </button>
             <button id="btn-scroll-bottom" class="btn btn-icon-only hidden" title="Scroll to bottom">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M8 3v8M5 9l3 3 3-3"/>
@@ -361,9 +373,23 @@
           <div id="folder-browser" class="folder-browser hidden"></div>
         </div>
         <div class="form-group">
-          <label for="agent-command">Command <span class="label-hint">(optional)</span></label>
-          <input type="text" id="agent-command" placeholder="claude" value="claude" autocomplete="off" spellcheck="false">
-          <div class="form-hint">The command to run in the terminal. Defaults to <code>claude</code>.</div>
+          <label for="agent-command-preset">Command <span class="label-hint">(optional)</span></label>
+          <div class="command-preset-row">
+            <select id="agent-command-preset" class="command-preset-select">
+              <option value="claude">claude</option>
+              <option value="claude --resume">claude --resume</option>
+              <option value="claude --dangerously-skip-permissions">claude --dangerously-skip-permissions</option>
+              <option value="claude --dangerously-skip-permissions --resume">claude --dangerously-skip-permissions --resume</option>
+              <option value="custom">Custom...</option>
+            </select>
+            <button type="button" class="btn btn-icon-only btn-small" id="btn-set-preferred-cmd" title="Set as preferred command for Quick Deploy">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M7 1l1.8 3.7 4.2.6-3 2.9.7 4.1L7 10.5 3.3 12.3l.7-4.1-3-2.9 4.2-.6z"/>
+              </svg>
+            </button>
+          </div>
+          <input type="text" id="agent-command" placeholder="Enter custom command..." autocomplete="off" spellcheck="false" style="display:none; margin-top:8px;">
+          <div class="form-hint">Select a command preset or choose Custom for a different command.</div>
         </div>
         <div class="form-group">
           <button type="button" class="btn btn-ghost btn-small startup-toggle" id="startup-prompt-toggle">
@@ -474,6 +500,12 @@
       </div>
       <div class="mcp-modal-footer">
         <span class="mcp-info-note">Changes take effect next time you start a Claude Code agent</span>
+        <button id="btn-mcp-edit-source" class="btn btn-ghost btn-small" title="Open ~/.mcp.json in file preview">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M2 10h8M8.5 1.5l-5 5V9h2.5l5-5-2.5-2.5z"/>
+          </svg>
+          Edit Source File
+        </button>
       </div>
     </div>
   </div>
@@ -612,6 +644,8 @@
           <div class="shortcut-row"><kbd>&#8984;&#8679;]</kbd><span>Next Agent</span></div>
           <div class="shortcut-row"><kbd>&#8984;&#8679;[</kbd><span>Previous Agent</span></div>
           <div class="shortcut-row"><kbd>&#8984;W</kbd><span>Close Agent</span></div>
+          <div class="shortcut-row"><kbd>&#8984;D</kbd><span>Quick Deploy</span></div>
+          <div class="shortcut-row"><kbd>&#8984;\</kbd><span>Toggle Split View</span></div>
           <div class="shortcut-row"><kbd>&#8984;A</kbd><span>Select All Agents</span></div>
         </div>
         <div class="shortcut-group">
